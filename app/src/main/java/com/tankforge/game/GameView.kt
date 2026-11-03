@@ -24,6 +24,8 @@ class GameView(context: Context) : View(context) {
     private var dir = 0
     private val enemies = mutableListOf<Pair<Float, Float>>()
     private val enemyDirs = mutableListOf<Int>()
+    private val enemyTypes = mutableListOf<Int>()
+    private val enemyHp = mutableListOf<Int>()
     private val bullets = mutableListOf<FloatArray>()
     private val bonuses = mutableListOf<FloatArray>()
     private var shieldUntil = 0L
@@ -64,6 +66,8 @@ class GameView(context: Context) : View(context) {
         dir = 0
         enemies.clear()
         enemyDirs.clear()
+        enemyTypes.clear()
+        enemyHp.clear()
         bullets.clear()
         bonuses.clear()
         shieldUntil = 0L
@@ -100,7 +104,7 @@ class GameView(context: Context) : View(context) {
         }
         if (System.currentTimeMillis() > playerHitUntil || (System.currentTimeMillis() / 100) % 2L == 0L) tank(c, tx, ty, dir, true)
         bonuses.forEach { drawBonus(c, it) }
-        enemies.forEachIndexed { i, pos -> tank(c, pos.first, pos.second, enemyDirs.getOrElse(i) { 2 }, false) }
+        enemies.forEachIndexed { i, pos -> tank(c, pos.first, pos.second, enemyDirs.getOrElse(i) { 2 }, false, enemyTypes.getOrElse(i) { 0 }) }
         bullets.forEach { b ->
             val bx = ox + (b[0] + .5f) * cell
             val by = oy + (b[1] + .5f) * cell
@@ -184,8 +188,11 @@ class GameView(context: Context) : View(context) {
         if (enemies.size < 4 && now - lastSpawn >= 1450L) {
             val spawnX = listOf(2f, 10f, 18f).filter { canTankMove(it, 1f) && !touchesEnemy(it, 1f) }.randomOrNull()
             if (spawnX != null) {
+                val type = Random.nextInt(0, 4)
                 enemies.add(spawnX to 1f)
                 enemyDirs.add(2)
+                enemyTypes.add(type)
+                enemyHp.add(if (type == 1) 3 else if (type == 3) 2 else 1)
             }
             lastSpawn = now
         }
@@ -208,15 +215,21 @@ class GameView(context: Context) : View(context) {
                 continue
             }
             if (map[y][x] != 0) {
-                if (map[y][x] == 1) map[y][x] = 0
+                if (map[y][x] == 1 || (map[y][x] == 2 && b[4] == 1f && b.getOrElse(5) { 1f } > 1.5f)) map[y][x] = 0
                 bulletIterator.remove()
                 continue
             }
             val hit = enemies.indexOfFirst { abs(it.first - b[0]) < .52f && abs(it.second - b[1]) < .52f }
             if (hit >= 0 && b[4] == 1f) {
-                enemies.removeAt(hit)
-                enemyDirs.removeAt(hit)
-                score += 100
+                enemyHp[hit] = enemyHp[hit] - if (b.getOrElse(5) { 1f } > 1.5f) 2 else 1
+                if (enemyHp[hit] <= 0) {
+                    enemies.removeAt(hit)
+                    enemyDirs.removeAt(hit)
+                    enemyTypes.removeAt(hit)
+                    enemyHp.removeAt(hit)
+                    score += 100
+                    if (Random.nextFloat() < .28f && bonuses.size < 2) bonuses.add(floatArrayOf(b[0].coerceIn(2f, cols - 3f), b[1].coerceIn(2f, rows - 3f), Random.nextInt(0, 5).toFloat(), (now + 12000L).toFloat()))
+                }
                 bulletIterator.remove()
                 continue
             }
@@ -233,7 +246,8 @@ class GameView(context: Context) : View(context) {
 
         for (i in enemies.indices) {
             val (ex, ey) = enemies[i]
-            val ny = ey + .012f * dt
+            val type = enemyTypes.getOrElse(i) { 0 }
+            val ny = ey + (if (type == 0) .018f else if (type == 1) .007f else if (type == 2) .014f else .010f) * dt
             enemyDirs[i] = 2
             if (canTankMove(ex, ny) && !touchesPlayer(ex, ny)) enemies[i] = ex to ny
             else if (ey > 1.1f) enemies[i] = ex to ey
@@ -243,7 +257,8 @@ class GameView(context: Context) : View(context) {
     private fun shoot(x: Float, y: Float, direction: Int, player: Boolean) {
         val dx = when (direction) { 1 -> 1f; 3 -> -1f; else -> 0f }
         val dy = when (direction) { 2 -> 1f; 0 -> -1f; else -> 0f }
-        bullets.add(floatArrayOf(x + dx * .48f, y + dy * .48f, dx, dy, if (player) 1f else 0f))
+        val heavy = player && System.currentTimeMillis() < weaponUntil
+        bullets.add(floatArrayOf(x + dx * .48f, y + dy * .48f, dx, dy, if (player) 1f else 0f, if (heavy) 1.8f else 1f))
     }
 
     // Tank coordinates are measured from tile centres. A tile spans [n-.5, n+.5].
@@ -315,11 +330,11 @@ class GameView(context: Context) : View(context) {
         c.drawLine(l + cell * .22f, t + cell * .52f, l + cell * .78f, t + cell * .52f, p)
     }
 
-    private fun tank(c: Canvas, x: Float, y: Float, d: Int, player: Boolean) {
+    private fun tank(c: Canvas, x: Float, y: Float, d: Int, player: Boolean, type: Int = 0) {
         val cx = ox + (x + .5f) * cell
         val cy = oy + (y + .5f) * cell
-        val hull = if (player) 0xFF4FAD72.toInt() else 0xFFCF514A.toInt()
-        val highlight = if (player) 0xFFB5F1B9.toInt() else 0xFFFFB0A0.toInt()
+        val hull = if (player) 0xFF4FAD72.toInt() else when (type) { 1 -> 0xFF657B9D.toInt(); 2 -> 0xFFD49A42.toInt(); 3 -> 0xFF9A68B8.toInt(); else -> 0xFFCF514A.toInt() }
+        val highlight = if (player) 0xFFB5F1B9.toInt() else when (type) { 1 -> 0xFFB8D4F5.toInt(); 2 -> 0xFFFFD88A.toInt(); 3 -> 0xFFE0B8FF.toInt(); else -> 0xFFFFB0A0.toInt() }
         val save = c.save()
         c.rotate(d * 90f, cx, cy)
 
@@ -356,9 +371,14 @@ class GameView(context: Context) : View(context) {
         p.color = 0xFFE3E9D0.toInt()
         c.drawRoundRect(cx - cell * .055f, cy - cell * .39f, cx + cell * .055f, cy - cell * .06f, cell * .025f, cell * .025f, p)
         p.color = 0xFF26343A.toInt()
-        c.drawCircle(cx, cy - cell * .18f, cell * .075f, p)
-        p.color = 0xFFFFD27B.toInt()
+        c.drawCircle(cx, cy - cell * .18f, cell * if (!player && type == 1) .105f else .075f, p)
+        p.color = if (!player && type == 2) 0xFFFFF0A0.toInt() else 0xFFFFD27B.toInt()
         c.drawCircle(cx, cy - cell * .18f, cell * .025f, p)
+        if (!player && type == 3) {
+            p.color = 0xFFE5C4FF.toInt()
+            c.drawCircle(cx - cell * .34f, cy, cell * .055f, p)
+            c.drawCircle(cx + cell * .34f, cy, cell * .055f, p)
+        }
 
         // Small side insignia.
         p.color = if (player) 0xFFFFD66F.toInt() else 0xFFFFD6C9.toInt()
