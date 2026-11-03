@@ -177,7 +177,7 @@ class GameView(context: Context) : View(context) {
                     0 -> { shieldUntil = now + 8000L; bonusMessage = "SHIELD ACTIVATED" }
                     1 -> { lives = (lives + 1).coerceAtMost(5); bonusMessage = "REPAIR +1 LIFE" }
                     2 -> { rapidUntil = now + 9000L; bonusMessage = "RAPID FIRE" }
-                    3 -> { enemies.clear(); enemyDirs.clear(); score += 250; bonusMessage = "MEGA BOMB!" }
+                    3 -> { enemies.clear(); enemyDirs.clear(); enemyTypes.clear(); enemyHp.clear(); score += 250; bonusMessage = "MEGA BOMB!" }
                     else -> { weaponUntil = now + 12000L; bonusMessage = "HEAVY CANNON" }
                 }
                 bonusMessageUntil = now + 1800L
