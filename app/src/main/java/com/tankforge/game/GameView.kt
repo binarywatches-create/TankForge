@@ -18,6 +18,7 @@ class GameView(context: Context) : View(context) {
     private var ox = 0f
     private var oy = 0f
     private val map = Array(rows) { IntArray(cols) }
+    // Power-up and enemy-class systems are being added in the next gameplay pass.
     private var tx = 3.5f
     private var ty = 11.5f
     private var dir = 0
