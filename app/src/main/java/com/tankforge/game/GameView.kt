@@ -311,7 +311,6 @@ class GameView(context: Context) : View(context) {
             (targetY + 1) * cols + targetX
         )
         val start = sy * cols + sx
-        if (start in goals) return alignedAttackDirection(ex, ey, px, py)
         val visited = BooleanArray(cols * rows)
         val firstDirection = IntArray(cols * rows) { -1 }
         val queue = IntArray(cols * rows)
