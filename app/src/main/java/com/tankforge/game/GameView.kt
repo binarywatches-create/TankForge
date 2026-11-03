@@ -18,6 +18,8 @@ class GameView(context: Context) : View(context) {
     private var ox = 0f
     private var oy = 0f
     private val map = Array(rows) { IntArray(cols) }
+    private val brickHp = Array(rows) { IntArray(cols) }
+    // Short-lived visual particles: x, y, vx, vy, remaining frames, color.
     // Power-up and enemy-class systems are being added in the next gameplay pass.
     private var tx = 3.5f
     private var ty = 11.5f
@@ -28,6 +30,7 @@ class GameView(context: Context) : View(context) {
     private val enemyHp = mutableListOf<Int>()
     private val enemyLastShot = mutableListOf<Long>()
     private val bullets = mutableListOf<FloatArray>()
+    private val effects = mutableListOf<FloatArray>()
     private val bonuses = mutableListOf<FloatArray>()
     private var shieldUntil = 0L
     private var rapidUntil = 0L
@@ -60,6 +63,8 @@ class GameView(context: Context) : View(context) {
                 else -> 0
             }
         }
+        for (y in 0 until rows) for (x in 0 until cols) brickHp[y][x] = if (map[y][x] == 1) 2 else 0
+        effects.clear()
         // Keep the player's starting area clear.
         for (y in 9..12) for (x in 1..6) map[y][x] = 0
         tx = 3f
@@ -107,6 +112,7 @@ class GameView(context: Context) : View(context) {
         if (System.currentTimeMillis() > playerHitUntil || (System.currentTimeMillis() / 100) % 2L == 0L) tank(c, tx, ty, dir, true)
         bonuses.forEach { drawBonus(c, it) }
         enemies.forEachIndexed { i, pos -> tank(c, pos.first, pos.second, enemyDirs.getOrElse(i) { 2 }, false, enemyTypes.getOrElse(i) { 0 }) }
+        drawEffects(c)
         bullets.forEach { b ->
             val bx = ox + (b[0] + .5f) * cell
             val by = oy + (b[1] + .5f) * cell
@@ -148,6 +154,7 @@ class GameView(context: Context) : View(context) {
         val now = System.currentTimeMillis()
         val dt = ((now - lastFrame).coerceIn(1, 40)) / 16f
         lastFrame = now
+        updateEffects(dt)
 
         if (move >= 0) {
             dir = move
@@ -179,7 +186,7 @@ class GameView(context: Context) : View(context) {
                     0 -> { shieldUntil = now + 8000L; bonusMessage = "SHIELD ACTIVATED" }
                     1 -> { lives = (lives + 1).coerceAtMost(5); bonusMessage = "REPAIR +1 LIFE" }
                     2 -> { rapidUntil = now + 9000L; bonusMessage = "RAPID FIRE" }
-                    3 -> { enemies.clear(); enemyDirs.clear(); enemyTypes.clear(); enemyHp.clear(); enemyLastShot.clear(); score += 250; bonusMessage = "MEGA BOMB!" }
+                    3 -> { enemies.forEach { spawnExplosion(it.first, it.second, 0xFFFFA64D.toInt(), 22) }; enemies.clear(); enemyDirs.clear(); enemyTypes.clear(); enemyHp.clear(); enemyLastShot.clear(); score += 250; bonusMessage = "MEGA BOMB!" }
                     else -> { weaponUntil = now + 12000L; bonusMessage = "HEAVY CANNON" }
                 }
                 bonusMessageUntil = now + 1800L
@@ -212,7 +219,21 @@ class GameView(context: Context) : View(context) {
                 continue
             }
             if (map[y][x] != 0) {
-                if (map[y][x] == 1 || (map[y][x] == 2 && b[4] == 1f && b.getOrElse(5) { 1f } > 1.5f)) map[y][x] = 0
+                if (map[y][x] == 1) {
+                    val damage = if (b.getOrElse(5) { 1f } > 1.5f) 2 else 1
+                    brickHp[y][x] = (brickHp[y][x] - damage).coerceAtLeast(0)
+                    if (brickHp[y][x] == 0) {
+                        map[y][x] = 0
+                        spawnExplosion(x.toFloat(), y.toFloat(), 0xFFC98255.toInt(), 9)
+                    } else {
+                        spawnExplosion(b[0], b[1], 0xFFFFC078.toInt(), 4)
+                    }
+                } else if (map[y][x] == 2 && b[4] == 1f && b.getOrElse(5) { 1f } > 1.5f) {
+                    map[y][x] = 0
+                    spawnExplosion(x.toFloat(), y.toFloat(), 0xFFB8D8E8.toInt(), 12)
+                } else {
+                    spawnExplosion(b[0], b[1], 0xFFB8D8E8.toInt(), 3)
+                }
                 bulletIterator.remove()
                 continue
             }
@@ -226,6 +247,7 @@ class GameView(context: Context) : View(context) {
                     enemyHp.removeAt(hit)
                     enemyLastShot.removeAt(hit)
                     score += 100
+                    spawnExplosion(b[0], b[1], when (typeForEffect(hit)) { 2 -> 0xFFFFC05A.toInt(); 3 -> 0xFFD7A6FF.toInt(); else -> 0xFFFF765C.toInt() }, if (enemyTypes.getOrNull(hit) == 2) 24 else 16)
                     if (Random.nextFloat() < .28f && bonuses.size < 2) bonuses.add(floatArrayOf(b[0].coerceIn(2f, cols - 3f), b[1].coerceIn(2f, rows - 3f), Random.nextInt(0, 5).toFloat(), (now + 12000L).toFloat()))
                 }
                 bulletIterator.remove()
@@ -234,6 +256,7 @@ class GameView(context: Context) : View(context) {
             if (b[4] == 0f && abs(tx - b[0]) < .42f && abs(ty - b[1]) < .42f && now >= playerHitUntil && now >= shieldUntil) {
                 bulletIterator.remove()
                 lives--
+                spawnExplosion(tx, ty, 0xFF69D68A.toInt(), 18)
                 playerHitUntil = now + 1400L
                 damageFlashUntil = now + 260L
                 tx = 3f
@@ -269,6 +292,44 @@ class GameView(context: Context) : View(context) {
                     enemies[i] = nx to ny
                 }
             }
+        }
+    }
+
+
+    private fun typeForEffect(index: Int): Int = enemyTypes.getOrElse(index) { 0 }
+
+    private fun spawnExplosion(x: Float, y: Float, color: Int, count: Int) {
+        repeat(count) {
+            val angle = Random.nextFloat() * (Math.PI.toFloat() * 2f)
+            val speed = .035f + Random.nextFloat() * .12f
+            effects.add(floatArrayOf(
+                x, y, kotlin.math.cos(angle) * speed, kotlin.math.sin(angle) * speed,
+                12f + Random.nextFloat() * 18f, color.toFloat()
+            ))
+        }
+    }
+
+    private fun updateEffects(dt: Float) {
+        val iterator = effects.iterator()
+        while (iterator.hasNext()) {
+            val e = iterator.next()
+            e[0] += e[2] * dt
+            e[1] += e[3] * dt
+            e[2] *= .965f
+            e[3] *= .965f
+            e[4] -= dt
+            if (e[4] <= 0f) iterator.remove()
+        }
+    }
+
+    private fun drawEffects(c: Canvas) {
+        effects.forEach { e ->
+            val alpha = (255f * (e[4] / 30f).coerceIn(0f, 1f)).toInt()
+            p.color = (e[5].toInt() and 0x00FFFFFF) or (alpha shl 24)
+            val x = ox + (e[0] + .5f) * cell
+            val y = oy + (e[1] + .5f) * cell
+            val radius = cell * (.035f + .09f * (e[4] / 30f).coerceIn(0f, 1f))
+            c.drawCircle(x, y, radius, p)
         }
     }
 
