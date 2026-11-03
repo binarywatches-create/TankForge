@@ -151,9 +151,34 @@ class GameView(context: Context) : View(context) {
             if (canTankMove(nx, ny) && !touchesEnemy(nx, ny)) { tx = nx; ty = ny }
         }
 
-        if (fire && now - lastShot >= 260L) {
+        if (fire && now - lastShot >= if (now < rapidUntil) 105L else 260L) {
             shoot(tx, ty, dir, true)
             lastShot = now
+        }
+
+        if (now - lastBonusSpawn > 8500L && bonuses.size < 2 && Random.nextFloat() < .05f) {
+            val bx = Random.nextInt(2, cols - 2)
+            val by = Random.nextInt(2, rows - 2)
+            if (map[by][bx] == 0 && abs(tx - bx) + abs(ty - by) > 3f) {
+                bonuses.add(floatArrayOf(bx.toFloat(), by.toFloat(), Random.nextInt(0, 5).toFloat(), (now + 12000L).toFloat()))
+                lastBonusSpawn = now
+            }
+        }
+        val bonusIterator = bonuses.iterator()
+        while (bonusIterator.hasNext()) {
+            val b = bonusIterator.next()
+            if (now > b[3].toLong()) { bonusIterator.remove(); continue }
+            if (abs(tx - b[0]) < .58f && abs(ty - b[1]) < .58f) {
+                when (b[2].toInt()) {
+                    0 -> { shieldUntil = now + 8000L; bonusMessage = "SHIELD ACTIVATED" }
+                    1 -> { lives = (lives + 1).coerceAtMost(5); bonusMessage = "REPAIR +1 LIFE" }
+                    2 -> { rapidUntil = now + 9000L; bonusMessage = "RAPID FIRE" }
+                    3 -> { enemies.clear(); enemyDirs.clear(); score += 250; bonusMessage = "MEGA BOMB!" }
+                    else -> { weaponUntil = now + 12000L; bonusMessage = "HEAVY CANNON" }
+                }
+                bonusMessageUntil = now + 1800L
+                bonusIterator.remove()
+            }
         }
 
         if (enemies.size < 4 && now - lastSpawn >= 1450L) {
@@ -195,7 +220,7 @@ class GameView(context: Context) : View(context) {
                 bulletIterator.remove()
                 continue
             }
-            if (b[4] == 0f && abs(tx - b[0]) < .42f && abs(ty - b[1]) < .42f && now >= playerHitUntil) {
+            if (b[4] == 0f && abs(tx - b[0]) < .42f && abs(ty - b[1]) < .42f && now >= playerHitUntil && now >= shieldUntil) {
                 bulletIterator.remove()
                 lives--
                 playerHitUntil = now + 1400L
@@ -341,6 +366,23 @@ class GameView(context: Context) : View(context) {
         c.restoreToCount(save)
     }
 
+    private fun drawBonus(c: Canvas, b: FloatArray) {
+        val x = ox + (b[0] + .5f) * cell
+        val y = oy + (b[1] + .5f) * cell
+        val colors = intArrayOf(0xFF4CB9F0.toInt(), 0xFF67D58A.toInt(), 0xFFFFD34F.toInt(), 0xFFE86D55.toInt(), 0xFFB88BFF.toInt())
+        val labels = arrayOf("S", "+", "R", "B", "W")
+        p.color = 0xCC101820.toInt()
+        c.drawCircle(x, y, cell * .39f, p)
+        p.color = colors[b[2].toInt().coerceIn(0, 4)]
+        c.drawCircle(x, y, cell * .31f, p)
+        p.color = 0xFF17242B.toInt()
+        p.textAlign = Paint.Align.CENTER
+        p.textSize = cell * .36f
+        p.typeface = android.graphics.Typeface.DEFAULT_BOLD
+        c.drawText(labels[b[2].toInt().coerceIn(0, 4)], x, y + cell * .12f, p)
+        p.textAlign = Paint.Align.LEFT
+    }
+
     private fun drawHud(c: Canvas) {
         p.color = 0xFF101E28.toInt()
         c.drawRoundRect(ox - cell * .02f, oy - cell * .8f, ox + cols * cell + cell * .02f, oy - cell * .08f, cell * .16f, cell * .16f, p)
@@ -354,6 +396,9 @@ class GameView(context: Context) : View(context) {
         p.typeface = android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.BOLD)
         p.textAlign = Paint.Align.LEFT
         c.drawText("SCORE  $score", ox + cell * .3f, oy - cell * .32f, p)
+        p.textAlign = Paint.Align.CENTER
+        p.color = when { System.currentTimeMillis() < shieldUntil -> 0xFF67D8FF.toInt(); System.currentTimeMillis() < rapidUntil -> 0xFFFFD34F.toInt(); System.currentTimeMillis() < weaponUntil -> 0xFFB88BFF.toInt(); else -> 0xFFB8C8CC.toInt() }
+        c.drawText(when { System.currentTimeMillis() < shieldUntil -> "SHIELD"; System.currentTimeMillis() < rapidUntil -> "RAPID"; System.currentTimeMillis() < weaponUntil -> "HEAVY"; else -> "" }, ox + cols * cell / 2f, oy - cell * .32f, p)
         p.textAlign = Paint.Align.RIGHT
         p.color = 0xFFFFD36A.toInt()
         c.drawText("LIVES  $lives", ox + cols * cell - cell * .3f, oy - cell * .32f, p)
