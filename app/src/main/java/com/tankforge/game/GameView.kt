@@ -241,13 +241,14 @@ class GameView(context: Context) : View(context) {
             if (hit >= 0 && b[4] == 1f) {
                 enemyHp[hit] = enemyHp[hit] - if (b.getOrElse(5) { 1f } > 1.5f) 2 else 1
                 if (enemyHp[hit] <= 0) {
+                    val destroyedType = enemyTypes.getOrElse(hit) { 0 }
                     enemies.removeAt(hit)
                     enemyDirs.removeAt(hit)
                     enemyTypes.removeAt(hit)
                     enemyHp.removeAt(hit)
                     enemyLastShot.removeAt(hit)
                     score += 100
-                    spawnExplosion(b[0], b[1], when (typeForEffect(hit)) { 2 -> 0xFFFFC05A.toInt(); 3 -> 0xFFD7A6FF.toInt(); else -> 0xFFFF765C.toInt() }, if (enemyTypes.getOrNull(hit) == 2) 24 else 16)
+                    spawnExplosion(b[0], b[1], when (destroyedType) { 2 -> 0xFFFFC05A.toInt(); 3 -> 0xFFD7A6FF.toInt(); else -> 0xFFFF765C.toInt() }, if (destroyedType == 2) 24 else 16)
                     if (Random.nextFloat() < .28f && bonuses.size < 2) bonuses.add(floatArrayOf(b[0].coerceIn(2f, cols - 3f), b[1].coerceIn(2f, rows - 3f), Random.nextInt(0, 5).toFloat(), (now + 12000L).toFloat()))
                 }
                 bulletIterator.remove()
@@ -295,8 +296,6 @@ class GameView(context: Context) : View(context) {
         }
     }
 
-
-    private fun typeForEffect(index: Int): Int = enemyTypes.getOrElse(index) { 0 }
 
     private fun spawnExplosion(x: Float, y: Float, color: Int, count: Int) {
         repeat(count) {
