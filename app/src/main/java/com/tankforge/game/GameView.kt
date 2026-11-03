@@ -60,7 +60,12 @@ class GameView(context: Context) : View(context) {
             map[y][x] = when {
                 x == 0 || y == 0 || x == cols - 1 || y == rows - 1 -> 2
                 Random.nextFloat() < .105f -> 1
-                else -> 0
+                else -> when (val roll = Random.nextFloat()) {
+                    in 0f..0.025f -> 3 // water
+                    in 0.025f..0.065f -> 4 // forest
+                    in 0.065f..0.10f -> 5 // ice
+                    else -> 0
+                }
             }
         }
         for (y in 0 until rows) for (x in 0 until cols) brickHp[y][x] = if (map[y][x] == 1) 2 else 0
@@ -107,11 +112,14 @@ class GameView(context: Context) : View(context) {
             when (map[y][x]) {
                 1 -> drawBrick(c, x, y)
                 2 -> drawSteel(c, x, y)
+                3 -> drawWater(c, x, y)
+                5 -> drawIce(c, x, y)
             }
         }
         if (System.currentTimeMillis() > playerHitUntil || (System.currentTimeMillis() / 100) % 2L == 0L) tank(c, tx, ty, dir, true)
         bonuses.forEach { drawBonus(c, it) }
         enemies.forEachIndexed { i, pos -> tank(c, pos.first, pos.second, enemyDirs.getOrElse(i) { 2 }, false, enemyTypes.getOrElse(i) { 0 }) }
+        drawForestCanopies(c)
         drawEffects(c)
         bullets.forEach { b ->
             val bx = ox + (b[0] + .5f) * cell
@@ -158,7 +166,8 @@ class GameView(context: Context) : View(context) {
 
         if (move >= 0) {
             dir = move
-            val speed = .075f * dt
+            val onIce = terrainAt(tx, ty) == 5
+            val speed = (if (onIce) .095f else .075f) * dt
             val nx = tx + when (dir) { 1 -> speed; 3 -> -speed; else -> 0f }
             val ny = ty + when (dir) { 2 -> speed; 0 -> -speed; else -> 0f }
             if (canTankMove(nx, ny) && !touchesEnemy(nx, ny)) { tx = nx; ty = ny }
@@ -172,7 +181,7 @@ class GameView(context: Context) : View(context) {
         if (now - lastBonusSpawn > 8500L && bonuses.size < 2 && Random.nextFloat() < .05f) {
             val bx = Random.nextInt(2, cols - 2)
             val by = Random.nextInt(2, rows - 2)
-            if (map[by][bx] == 0 && abs(tx - bx) + abs(ty - by) > 3f) {
+            if (isWalkableTile(map[by][bx]) && abs(tx - bx) + abs(ty - by) > 3f) {
                 bonuses.add(floatArrayOf(bx.toFloat(), by.toFloat(), Random.nextInt(0, 5).toFloat(), (now + 12000L).toFloat()))
                 lastBonusSpawn = now
             }
@@ -218,7 +227,7 @@ class GameView(context: Context) : View(context) {
                 bulletIterator.remove()
                 continue
             }
-            if (map[y][x] != 0) {
+            if (map[y][x] == 1 || map[y][x] == 2) {
                 if (map[y][x] == 1) {
                     val damage = if (b.getOrElse(5) { 1f } > 1.5f) 2 else 1
                     brickHp[y][x] = (brickHp[y][x] - damage).coerceAtLeast(0)
@@ -283,7 +292,8 @@ class GameView(context: Context) : View(context) {
             val nextDir = findEnemyPathDirection(ex, ey, tx, ty, type, i)
             if (nextDir >= 0) {
                 enemyDirs[i] = nextDir
-                val speed = when (type) { 0 -> .032f; 1 -> .017f; 2 -> .013f; else -> .022f } * dt
+                val terrainSpeed = if (terrainAt(ex, ey) == 5) 1.22f else 1f
+                val speed = when (type) { 0 -> .032f; 1 -> .017f; 2 -> .013f; else -> .022f } * dt * terrainSpeed
                 val nx = ex + when (nextDir) { 1 -> speed; 3 -> -speed; else -> 0f }
                 val ny = ey + when (nextDir) { 2 -> speed; 0 -> -speed; else -> 0f }
                 val blockedByEnemy = enemies.indices.any { j ->
@@ -374,7 +384,7 @@ class GameView(context: Context) : View(context) {
             buildSet {
                 for (gy in 1 until rows - 1) for (gx in 1 until cols - 1) {
                     val distance = abs(gx - targetX) + abs(gy - targetY)
-                    if (map[gy][gx] == 0 && distance in 2..5 &&
+                    if (isWalkableTile(map[gy][gx]) && distance in 2..5 &&
                         alignedAttackDirection(gx.toFloat(), gy.toFloat(), px, py) >= 0) {
                         add(gy * cols + gx)
                     }
@@ -410,7 +420,7 @@ class GameView(context: Context) : View(context) {
             for (direction in directions) {
                 val nx = x + when (direction) { 1 -> 1; 3 -> -1; else -> 0 }
                 val ny = y + when (direction) { 2 -> 1; 0 -> -1; else -> 0 }
-                if (nx !in 1 until cols - 1 || ny !in 1 until rows - 1 || map[ny][nx] != 0) continue
+                if (nx !in 1 until cols - 1 || ny !in 1 until rows - 1 || !isWalkableTile(map[ny][nx])) continue
                 val next = ny * cols + nx
                 if (visited[next]) continue
                 visited[next] = true
@@ -437,7 +447,7 @@ class GameView(context: Context) : View(context) {
         val minY = kotlin.math.floor(y - half + .5f).toInt()
         val maxY = kotlin.math.floor(y + half + .5f).toInt()
         for (gy in minY..maxY) for (gx in minX..maxX) {
-            if (gx !in 0 until cols || gy !in 0 until rows || map[gy][gx] != 0) return false
+            if (gx !in 0 until cols || gy !in 0 until rows || map[gy][gx] == 1 || map[gy][gx] == 2 || map[gy][gx] == 3) return false
         }
         return true
     }
@@ -461,6 +471,52 @@ class GameView(context: Context) : View(context) {
                 c.drawLine(left + cell * .22f, top + cell * .72f, left + cell * .35f, top + cell * .58f, p)
                 c.drawLine(left + cell * .65f, top + cell * .28f, left + cell * .78f, top + cell * .42f, p)
             }
+        }
+    }
+
+
+    private fun isWalkableTile(tile: Int): Boolean = tile == 0 || tile == 4 || tile == 5
+
+    private fun terrainAt(x: Float, y: Float): Int {
+        val gx = x.toInt().coerceIn(0, cols - 1)
+        val gy = y.toInt().coerceIn(0, rows - 1)
+        return map[gy][gx]
+    }
+
+    private fun drawWater(c: Canvas, x: Int, y: Int) {
+        val l = ox + x * cell
+        val t = oy + y * cell
+        p.color = 0xFF174F78.toInt()
+        c.drawRect(l, t, l + cell, t + cell, p)
+        p.color = 0xFF4C9CC4.toInt()
+        p.strokeWidth = maxOf(1f, cell * .045f)
+        c.drawLine(l + cell * .14f, t + cell * .32f, l + cell * .72f, t + cell * .32f, p)
+        c.drawLine(l + cell * .34f, t + cell * .68f, l + cell * .88f, t + cell * .68f, p)
+    }
+
+    private fun drawIce(c: Canvas, x: Int, y: Int) {
+        val l = ox + x * cell
+        val t = oy + y * cell
+        p.color = 0xFF9ACBD5.toInt()
+        c.drawRect(l, t, l + cell, t + cell, p)
+        p.color = 0xFFDDF7F5.toInt()
+        p.strokeWidth = maxOf(1f, cell * .035f)
+        c.drawLine(l + cell * .16f, t + cell * .25f, l + cell * .72f, t + cell * .25f, p)
+        c.drawLine(l + cell * .38f, t + cell * .68f, l + cell * .86f, t + cell * .68f, p)
+    }
+
+    private fun drawForestCanopies(c: Canvas) {
+        for (y in 0 until rows) for (x in 0 until cols) {
+            if (map[y][x] != 4) continue
+            val cx = ox + (x + .5f) * cell
+            val cy = oy + (y + .5f) * cell
+            p.color = 0xDD174A35.toInt()
+            c.drawCircle(cx, cy, cell * .43f, p)
+            p.color = 0xEE26734A.toInt()
+            c.drawCircle(cx - cell * .12f, cy - cell * .10f, cell * .25f, p)
+            c.drawCircle(cx + cell * .13f, cy + cell * .08f, cell * .24f, p)
+            p.color = 0xFF78A96A.toInt()
+            c.drawCircle(cx - cell * .13f, cy - cell * .16f, cell * .055f, p)
         }
     }
 
