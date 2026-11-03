@@ -34,10 +34,12 @@ class GameView(context: Context) : View(context) {
     private var lastShot = 0L
     private var lastSpawn = 0L
     private var lastEnemyShot = 0L
+    private var playerHitUntil = 0L
+    private var damageFlashUntil = 0L
 
-    private val brick = 0xFFB85F3D.toInt()
-    private val steel = 0xFF778895.toInt()
-    private val green = 0xFF4EAD78.toInt()
+    private val brick = 0xFFC76B43.toInt()
+    private val steel = 0xFF91A7B8.toInt()
+    private val green = 0xFF64C78A.toInt()
 
     private fun reset() {
         for (y in 0 until rows) for (x in 0 until cols) {
@@ -49,8 +51,8 @@ class GameView(context: Context) : View(context) {
         }
         // Keep the player's starting area clear.
         for (y in 9..12) for (x in 1..6) map[y][x] = 0
-        tx = 3.5f
-        ty = 11.5f
+        tx = 3f
+        ty = 11f
         dir = 0
         enemies.clear()
         enemyDirs.clear()
@@ -64,6 +66,8 @@ class GameView(context: Context) : View(context) {
         lastShot = 0L
         lastSpawn = now
         lastEnemyShot = now
+        playerHitUntil = 0L
+        damageFlashUntil = 0L
     }
 
     override fun onDraw(c: Canvas) {
@@ -81,7 +85,7 @@ class GameView(context: Context) : View(context) {
                 2 -> drawSteel(c, x, y)
             }
         }
-        tank(c, tx, ty, dir, true)
+        if (System.currentTimeMillis() > playerHitUntil || (System.currentTimeMillis() / 100) % 2L == 0L) tank(c, tx, ty, dir, true)
         enemies.forEachIndexed { i, pos -> tank(c, pos.first, pos.second, enemyDirs.getOrElse(i) { 2 }, false) }
         bullets.forEach { b ->
             val bx = ox + (b[0] + .5f) * cell
@@ -123,7 +127,7 @@ class GameView(context: Context) : View(context) {
             val speed = .075f * dt
             val nx = tx + when (dir) { 1 -> speed; 3 -> -speed; else -> 0f }
             val ny = ty + when (dir) { 2 -> speed; 0 -> -speed; else -> 0f }
-            if (canTankMove(nx, ny)) { tx = nx; ty = ny }
+            if (canTankMove(nx, ny) && !touchesEnemy(nx, ny)) { tx = nx; ty = ny }
         }
 
         if (fire && now - lastShot >= 260L) {
@@ -132,9 +136,9 @@ class GameView(context: Context) : View(context) {
         }
 
         if (enemies.size < 4 && now - lastSpawn >= 1450L) {
-            val spawnX = listOf(2.5f, 10.5f, 18.5f).filter { canTankMove(it, 1.5f) }.randomOrNull()
+            val spawnX = listOf(2f, 10f, 18f).filter { canTankMove(it, 1f) && !touchesEnemy(it, 1f) }.randomOrNull()
             if (spawnX != null) {
-                enemies.add(spawnX to 1.5f)
+                enemies.add(spawnX to 1f)
                 enemyDirs.add(2)
             }
             lastSpawn = now
@@ -170,11 +174,13 @@ class GameView(context: Context) : View(context) {
                 bulletIterator.remove()
                 continue
             }
-            if (b[4] == 0f && abs(tx - b[0]) < .42f && abs(ty - b[1]) < .42f) {
+            if (b[4] == 0f && abs(tx - b[0]) < .42f && abs(ty - b[1]) < .42f && now >= playerHitUntil) {
                 bulletIterator.remove()
                 lives--
-                tx = 3.5f
-                ty = 11.5f
+                playerHitUntil = now + 1400L
+                damageFlashUntil = now + 260L
+                tx = 3f
+                ty = 11f
                 if (lives <= 0) over = true
             }
         }
@@ -183,15 +189,8 @@ class GameView(context: Context) : View(context) {
             val (ex, ey) = enemies[i]
             val ny = ey + .012f * dt
             enemyDirs[i] = 2
-            if (canTankMove(ex, ny)) enemies[i] = ex to ny
-            else if (ey > 1.6f) enemies[i] = ex to ey
-            if (abs(ex - tx) < .58f && abs(ey - ty) < .58f) {
-                lives--
-                tx = 3.5f
-                ty = 11.5f
-                enemies[i] = ex to 1.5f
-                if (lives <= 0) over = true
-            }
+            if (canTankMove(ex, ny) && !touchesPlayer(ex, ny)) enemies[i] = ex to ny
+            else if (ey > 1.1f) enemies[i] = ex to ey
         }
     }
 
@@ -201,24 +200,32 @@ class GameView(context: Context) : View(context) {
         bullets.add(floatArrayOf(x + dx * .48f, y + dy * .48f, dx, dy, if (player) 1f else 0f))
     }
 
-    // Test all four corners of the tank footprint, not only its center cell.
+    // Tank coordinates are measured from tile centres. A tile spans [n-.5, n+.5].
+    // Check the complete tank AABB against every overlapped map tile.
     private fun canTankMove(x: Float, y: Float): Boolean {
-        val r = .31f
-        val points = arrayOf(
-            (x - r) to (y - r), (x + r) to (y - r),
-            (x - r) to (y + r), (x + r) to (y + r)
-        )
-        return points.all { (px, py) ->
-            val gx = px.toInt()
-            val gy = py.toInt()
-            gx in 1 until cols - 1 && gy in 1 until rows - 1 && map[gy][gx] == 0
+        val half = .34f
+        val minX = kotlin.math.floor(x - half + .5f).toInt()
+        val maxX = kotlin.math.floor(x + half + .5f).toInt()
+        val minY = kotlin.math.floor(y - half + .5f).toInt()
+        val maxY = kotlin.math.floor(y + half + .5f).toInt()
+        for (gy in minY..maxY) for (gx in minX..maxX) {
+            if (gx !in 0 until cols || gy !in 0 until rows || map[gy][gx] != 0) return false
         }
+        return true
     }
 
+    private fun touchesEnemy(x: Float, y: Float): Boolean =
+        enemies.any { abs(it.first - x) < .68f && abs(it.second - y) < .68f }
+
+    private fun touchesPlayer(x: Float, y: Float): Boolean =
+        abs(tx - x) < .68f && abs(ty - y) < .68f
+
     private fun drawField(c: Canvas) {
-        p.color = 0xFF263D35.toInt()
-        c.drawRect(ox, oy, ox + cols * cell, oy + rows * cell, p)
-        p.color = 0xFF30483C.toInt()
+        p.color = 0xFF182B32.toInt()
+        c.drawRect(ox - cell * .25f, oy - cell * .25f, ox + cols * cell + cell * .25f, oy + rows * cell + cell * .25f, p)
+        p.color = 0xFF263F3B.toInt()
+        c.drawRoundRect(ox, oy, ox + cols * cell, oy + rows * cell, cell * .12f, cell * .12f, p)
+        p.color = 0xFF34534A.toInt()
         for (y in 0 until rows) for (x in 0 until cols) {
             if ((x * 7 + y * 11) % 5 == 0) {
                 val left = ox + x * cell
@@ -232,67 +239,98 @@ class GameView(context: Context) : View(context) {
     private fun drawBrick(c: Canvas, x: Int, y: Int) {
         val l = ox + x * cell
         val t = oy + y * cell
-        p.color = 0xFF603A2D.toInt()
-        c.drawRect(l + 1, t + 1, l + cell - 1, t + cell - 1, p)
+        p.color = 0xFF60372D.toInt()
+        c.drawRoundRect(l + 1, t + 2, l + cell - 1, t + cell - 1, cell * .07f, cell * .07f, p)
         p.color = brick
-        c.drawRect(l + 2, t + 2, l + cell - 2, t + cell * .46f, p)
-        c.drawRect(l + 2, t + cell * .54f, l + cell - 2, t + cell - 2, p)
-        p.color = 0xFFDA8B5D.toInt()
+        c.drawRoundRect(l + 2, t + 2, l + cell - 2, t + cell * .46f, cell * .06f, cell * .06f, p)
+        c.drawRoundRect(l + 2, t + cell * .54f, l + cell - 2, t + cell - 2, cell * .06f, cell * .06f, p)
+        p.color = 0xFFFFB17A.toInt()
+        p.strokeWidth = maxOf(1f, cell * .045f)
         c.drawLine(l + 3, t + 3, l + cell - 3, t + 3, p)
         c.drawLine(l + cell * .5f, t + 3, l + cell * .5f, t + cell * .44f, p)
         c.drawLine(l + cell * .25f, t + cell * .56f, l + cell * .25f, t + cell - 3, p)
+        p.color = 0xFF8D4937.toInt()
+        c.drawLine(l + 3, t + cell * .48f, l + cell - 3, t + cell * .48f, p)
     }
 
     private fun drawSteel(c: Canvas, x: Int, y: Int) {
         val l = ox + x * cell
         val t = oy + y * cell
-        p.color = 0xFF35434B.toInt()
-        c.drawRect(l + 1, t + 1, l + cell - 1, t + cell - 1, p)
+        p.color = 0xFF263D4C.toInt()
+        c.drawRoundRect(l + 1, t + 2, l + cell - 1, t + cell - 1, cell * .09f, cell * .09f, p)
         p.color = steel
-        c.drawRect(l + 3, t + 3, l + cell - 3, t + cell - 3, p)
-        p.color = 0xFFB8C4C8.toInt()
+        c.drawRoundRect(l + 3, t + 3, l + cell - 3, t + cell - 3, cell * .08f, cell * .08f, p)
+        p.color = 0xFFDCEAF0.toInt()
+        p.strokeWidth = maxOf(1f, cell * .04f)
         c.drawLine(l + 4, t + 4, l + cell - 4, t + 4, p)
-        c.drawCircle(l + cell * .2f, t + cell * .2f, cell * .045f, p)
-        c.drawCircle(l + cell * .8f, t + cell * .8f, cell * .045f, p)
+        c.drawCircle(l + cell * .2f, t + cell * .2f, cell * .055f, p)
+        c.drawCircle(l + cell * .8f, t + cell * .8f, cell * .055f, p)
+        p.color = 0xFF506B7B.toInt()
+        c.drawLine(l + cell * .22f, t + cell * .52f, l + cell * .78f, t + cell * .52f, p)
     }
 
     private fun tank(c: Canvas, x: Float, y: Float, d: Int, player: Boolean) {
         val cx = ox + (x + .5f) * cell
         val cy = oy + (y + .5f) * cell
-        val body = if (player) green else 0xFFD95B50.toInt()
-        // Tracks
-        p.color = 0xFF172126.toInt()
-        c.drawRoundRect(cx - cell * .43f, cy - cell * .39f, cx + cell * .43f, cy + cell * .39f, cell * .12f, cell * .12f, p)
-        p.color = 0xFF78847D.toInt()
+        val hull = if (player) 0xFF4FAD72.toInt() else 0xFFCF514A.toInt()
+        val highlight = if (player) 0xFFB5F1B9.toInt() else 0xFFFFB0A0.toInt()
+        val save = c.save()
+        c.rotate(d * 90f, cx, cy)
+
+        // Soft ground shadow and rugged tracks.
+        p.color = 0x77071318.toInt()
+        c.drawOval(cx - cell * .43f, cy + cell * .27f, cx + cell * .43f, cy + cell * .48f, p)
+        p.color = 0xFF111B20.toInt()
+        c.drawRoundRect(cx - cell * .45f, cy - cell * .39f, cx - cell * .23f, cy + cell * .39f, cell * .07f, cell * .07f, p)
+        c.drawRoundRect(cx + cell * .23f, cy - cell * .39f, cx + cell * .45f, cy + cell * .39f, cell * .07f, cell * .07f, p)
+        p.color = 0xFF65747A.toInt()
         for (i in -2..2) {
-            val yy = cy + i * cell * .14f
-            c.drawLine(cx - cell * .39f, yy, cx - cell * .32f, yy, p)
-            c.drawLine(cx + cell * .32f, yy, cx + cell * .39f, yy, p)
+            val yy = cy + i * cell * .145f
+            c.drawRoundRect(cx - cell * .43f, yy - cell * .035f, cx - cell * .25f, yy + cell * .035f, cell * .025f, cell * .025f, p)
+            c.drawRoundRect(cx + cell * .25f, yy - cell * .035f, cx + cell * .43f, yy + cell * .035f, cell * .025f, cell * .025f, p)
         }
-        // Armoured hull
-        p.color = body
-        c.drawRoundRect(cx - cell * .31f, cy - cell * .31f, cx + cell * .31f, cy + cell * .31f, cell * .09f, cell * .09f, p)
-        p.color = if (player) 0xFF9BE3A9.toInt() else 0xFFFF9A83.toInt()
-        c.drawLine(cx - cell * .22f, cy - cell * .22f, cx + cell * .18f, cy - cell * .22f, p)
-        // Turret and barrel
-        p.color = 0xFF25332F.toInt()
-        c.drawCircle(cx, cy, cell * .19f, p)
-        p.color = 0xFFE0D8B8.toInt()
-        val ex = cx + when (d) { 1 -> cell * .49f; 3 -> -cell * .49f; else -> 0f }
-        val ey = cy + when (d) { 2 -> cell * .49f; 0 -> -cell * .49f; else -> 0f }
-        p.strokeWidth = cell * .12f
-        p.strokeCap = Paint.Cap.SQUARE
-        c.drawLine(cx, cy, ex, ey, p)
-        p.strokeCap = Paint.Cap.BUTT
-        p.color = 0xFF10191B.toInt()
-        c.drawCircle(cx, cy, cell * .065f, p)
+
+        // Layered armoured hull with bevels.
+        p.color = if (player) 0xFF1F704D.toInt() else 0xFF873A38.toInt()
+        c.drawRoundRect(cx - cell * .31f, cy - cell * .34f, cx + cell * .31f, cy + cell * .34f, cell * .09f, cell * .09f, p)
+        p.color = hull
+        c.drawRoundRect(cx - cell * .285f, cy - cell * .31f, cx + cell * .285f, cy + cell * .29f, cell * .075f, cell * .075f, p)
+        p.color = highlight
+        c.drawRoundRect(cx - cell * .22f, cy - cell * .27f, cx + cell * .18f, cy - cell * .21f, cell * .025f, cell * .025f, p)
+        p.color = if (player) 0xFF26744E.toInt() else 0xFF923C37.toInt()
+        c.drawRect(cx - cell * .22f, cy + cell * .13f, cx + cell * .22f, cy + cell * .22f, p)
+
+        // Turret ring, commander hatch and cannon.
+        p.color = 0xFF17262A.toInt()
+        c.drawCircle(cx, cy, cell * .205f, p)
+        p.color = if (player) 0xFF75D58D.toInt() else 0xFFE97965.toInt()
+        c.drawCircle(cx, cy, cell * .17f, p)
+        p.color = 0xFF263A3C.toInt()
+        c.drawCircle(cx, cy, cell * .115f, p)
+        p.color = 0xFFE3E9D0.toInt()
+        c.drawRoundRect(cx - cell * .055f, cy - cell * .39f, cx + cell * .055f, cy - cell * .06f, cell * .025f, cell * .025f, p)
+        p.color = 0xFF26343A.toInt()
+        c.drawCircle(cx, cy - cell * .18f, cell * .075f, p)
+        p.color = 0xFFFFD27B.toInt()
+        c.drawCircle(cx, cy - cell * .18f, cell * .025f, p)
+
+        // Small side insignia.
+        p.color = if (player) 0xFFFFD66F.toInt() else 0xFFFFD6C9.toInt()
+        c.drawCircle(cx, cy + cell * .255f, cell * .045f, p)
+        c.restoreToCount(save)
     }
 
     private fun drawHud(c: Canvas) {
-        p.color = 0xFF0C151B.toInt()
-        c.drawRoundRect(ox, oy - cell * .78f, ox + cols * cell, oy - cell * .12f, cell * .12f, cell * .12f, p)
+        p.color = 0xFF101E28.toInt()
+        c.drawRoundRect(ox - cell * .02f, oy - cell * .8f, ox + cols * cell + cell * .02f, oy - cell * .08f, cell * .16f, cell * .16f, p)
+        p.color = 0xFF4B6976.toInt()
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = maxOf(1f, cell * .035f)
+        c.drawRoundRect(ox, oy - cell * .78f, ox + cols * cell, oy - cell * .1f, cell * .13f, cell * .13f, p)
+        p.style = Paint.Style.FILL
         p.color = 0xFFEAF0F2.toInt()
         p.textSize = cell * .48f
+        p.typeface = android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.BOLD)
         p.textAlign = Paint.Align.LEFT
         c.drawText("SCORE  $score", ox + cell * .3f, oy - cell * .32f, p)
         p.textAlign = Paint.Align.RIGHT
@@ -309,8 +347,10 @@ class GameView(context: Context) : View(context) {
         for (d in 0..3) {
             val x = cx + when (d) { 1 -> s; 3 -> -s; else -> 0f }
             val y = cy + when (d) { 2 -> s; 0 -> -s; else -> 0f }
-            p.color = 0xAA253A43.toInt()
-            c.drawCircle(x, y, s * .38f, p)
+            p.color = 0xCC13252D.toInt()
+            c.drawCircle(x, y, s * .4f, p)
+            p.color = 0xAA3F6870.toInt()
+            c.drawCircle(x, y, s * .32f, p)
             p.color = 0xFF9CB5B8.toInt()
             p.style = Paint.Style.STROKE
             p.strokeWidth = cell * .045f
@@ -322,8 +362,10 @@ class GameView(context: Context) : View(context) {
         }
         val fx = width - s * 1.3f
         val fy = height - s * 1.2f
-        p.color = 0xCC8F3540.toInt()
-        c.drawCircle(fx, fy, s * .56f, p)
+        p.color = 0xCC702E38.toInt()
+        c.drawCircle(fx, fy, s * .58f, p)
+        p.color = 0xCCB94A4C.toInt()
+        c.drawCircle(fx, fy, s * .48f, p)
         p.color = 0xFFFFB4A8.toInt()
         p.style = Paint.Style.STROKE
         p.strokeWidth = cell * .06f
