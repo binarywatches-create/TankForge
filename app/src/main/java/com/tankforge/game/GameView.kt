@@ -73,12 +73,12 @@ class GameView(context: Context) : View(context) {
         shieldUntil = 0L
         rapidUntil = 0L
         weaponUntil = 0L
+        val now = System.currentTimeMillis()
         lastBonusSpawn = now
         score = 0
         lives = 3
         over = false
         started = true
-        val now = System.currentTimeMillis()
         lastFrame = now
         lastShot = 0L
         lastSpawn = now
