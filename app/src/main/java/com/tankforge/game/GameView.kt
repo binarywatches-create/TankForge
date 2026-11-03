@@ -197,12 +197,6 @@ class GameView(context: Context) : View(context) {
             lastSpawn = now
         }
 
-        if (now - lastEnemyShot > 1700L && enemies.isNotEmpty()) {
-            val i = Random.nextInt(enemies.size)
-            shoot(enemies[i].first, enemies[i].second, enemyDirs[i], false)
-            lastEnemyShot = now
-        }
-
         val bulletIterator = bullets.iterator()
         while (bulletIterator.hasNext()) {
             val b = bulletIterator.next()
@@ -247,11 +241,109 @@ class GameView(context: Context) : View(context) {
         for (i in enemies.indices) {
             val (ex, ey) = enemies[i]
             val type = enemyTypes.getOrElse(i) { 0 }
-            val ny = ey + (if (type == 0) .018f else if (type == 1) .007f else if (type == 2) .014f else .010f) * dt
-            enemyDirs[i] = 2
-            if (canTankMove(ex, ny) && !touchesPlayer(ex, ny)) enemies[i] = ex to ny
-            else if (ey > 1.1f) enemies[i] = ex to ey
+            val attackDir = alignedAttackDirection(ex, ey, tx, ty)
+            if (attackDir >= 0 && hasClearShot(ex, ey, tx, ty, attackDir)) {
+                enemyDirs[i] = attackDir
+                val cooldown = if (type == 1) 2050L else if (type == 2) 1450L else 1150L
+                if (now - lastEnemyShot >= cooldown) {
+                    shoot(ex, ey, attackDir, false)
+                    lastEnemyShot = now
+                }
+                continue
+            }
+
+            val nextDir = findEnemyPathDirection(ex, ey, tx, ty, type, i)
+            if (nextDir >= 0) {
+                enemyDirs[i] = nextDir
+                val speed = when (type) { 0 -> .027f; 1 -> .014f; 2 -> .022f; else -> .024f } * dt
+                val nx = ex + when (nextDir) { 1 -> speed; 3 -> -speed; else -> 0f }
+                val ny = ey + when (nextDir) { 2 -> speed; 0 -> -speed; else -> 0f }
+                val blockedByEnemy = enemies.indices.any { j ->
+                    j != i && abs(enemies[j].first - nx) < .62f && abs(enemies[j].second - ny) < .62f
+                }
+                if (canTankMove(nx, ny) && !touchesPlayer(nx, ny) && !blockedByEnemy) {
+                    enemies[i] = nx to ny
+                }
+            }
         }
+    }
+
+    // Return a cardinal direction when the player is on the same clear row or column.
+    private fun alignedAttackDirection(ex: Float, ey: Float, px: Float, py: Float): Int {
+        if (abs(ex - px) < .42f) {
+            if (py < ey && hasClearShot(ex, ey, px, py, 0)) return 0
+            if (py > ey && hasClearShot(ex, ey, px, py, 2)) return 2
+        }
+        if (abs(ey - py) < .42f) {
+            if (px > ex && hasClearShot(ex, ey, px, py, 1)) return 1
+            if (px < ex && hasClearShot(ex, ey, px, py, 3)) return 3
+        }
+        return -1
+    }
+
+    private fun hasClearShot(ex: Float, ey: Float, px: Float, py: Float, direction: Int): Boolean {
+        val steps = when (direction) {
+            0 -> (ey - py).toInt()
+            1 -> (px - ex).toInt()
+            2 -> (py - ey).toInt()
+            else -> (ex - px).toInt()
+        }
+        if (steps <= 0) return false
+        for (step in 1 until steps) {
+            val x = (ex + when (direction) { 1 -> step.toFloat(); 3 -> -step.toFloat(); else -> 0f }).toInt()
+            val y = (ey + when (direction) { 2 -> step.toFloat(); 0 -> -step.toFloat(); else -> 0f }).toInt()
+            if (x !in 0 until cols || y !in 0 until rows || map[y][x] != 0) return false
+        }
+        return true
+    }
+
+    // Breadth-first search over walkable tile centres. Enemies seek a tile beside the player,
+    // rather than trying to occupy the player's tile.
+    private fun findEnemyPathDirection(ex: Float, ey: Float, px: Float, py: Float, type: Int, enemyIndex: Int): Int {
+        val sx = ex.toInt().coerceIn(1, cols - 2)
+        val sy = ey.toInt().coerceIn(1, rows - 2)
+        val targetX = px.toInt().coerceIn(1, cols - 2)
+        val targetY = py.toInt().coerceIn(1, rows - 2)
+        val goals = setOf(
+            targetY * cols + targetX - 1,
+            targetY * cols + targetX + 1,
+            (targetY - 1) * cols + targetX,
+            (targetY + 1) * cols + targetX
+        )
+        val start = sy * cols + sx
+        if (start in goals) return alignedAttackDirection(ex, ey, px, py)
+        val visited = BooleanArray(cols * rows)
+        val firstDirection = IntArray(cols * rows) { -1 }
+        val queue = IntArray(cols * rows)
+        var head = 0
+        var tail = 0
+        queue[tail++] = start
+        visited[start] = true
+        val directions = if (type == 3) {
+            when (enemyIndex % 4) {
+                0 -> intArrayOf(1, 2, 3, 0)
+                1 -> intArrayOf(3, 0, 1, 2)
+                2 -> intArrayOf(0, 1, 2, 3)
+                else -> intArrayOf(2, 3, 0, 1)
+            }
+        } else intArrayOf(0, 1, 2, 3)
+        while (head < tail) {
+            val current = queue[head++]
+            if (current in goals && current != start) return firstDirection[current]
+            val x = current % cols
+            val y = current / cols
+            for (direction in directions) {
+                val nx = x + when (direction) { 1 -> 1; 3 -> -1; else -> 0 }
+                val ny = y + when (direction) { 2 -> 1; 0 -> -1; else -> 0 }
+                if (nx !in 1 until cols - 1 || ny !in 1 until rows - 1 || map[ny][nx] != 0) continue
+                val next = ny * cols + nx
+                if (visited[next]) continue
+                visited[next] = true
+                firstDirection[next] = if (current == start) direction else firstDirection[current]
+                queue[tail++] = next
+            }
+        }
+        return -1
     }
 
     private fun shoot(x: Float, y: Float, direction: Int, player: Boolean) {
