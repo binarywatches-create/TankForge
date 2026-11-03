@@ -25,6 +25,13 @@ class GameView(context: Context) : View(context) {
     private val enemies = mutableListOf<Pair<Float, Float>>()
     private val enemyDirs = mutableListOf<Int>()
     private val bullets = mutableListOf<FloatArray>()
+    private val bonuses = mutableListOf<FloatArray>()
+    private var shieldUntil = 0L
+    private var rapidUntil = 0L
+    private var weaponUntil = 0L
+    private var lastBonusSpawn = 0L
+    private var bonusMessage = ""
+    private var bonusMessageUntil = 0L
     private var score = 0
     private var lives = 3
     private var started = false
@@ -58,6 +65,11 @@ class GameView(context: Context) : View(context) {
         enemies.clear()
         enemyDirs.clear()
         bullets.clear()
+        bonuses.clear()
+        shieldUntil = 0L
+        rapidUntil = 0L
+        weaponUntil = 0L
+        lastBonusSpawn = now
         score = 0
         lives = 3
         over = false
@@ -87,6 +99,7 @@ class GameView(context: Context) : View(context) {
             }
         }
         if (System.currentTimeMillis() > playerHitUntil || (System.currentTimeMillis() / 100) % 2L == 0L) tank(c, tx, ty, dir, true)
+        bonuses.forEach { drawBonus(c, it) }
         enemies.forEachIndexed { i, pos -> tank(c, pos.first, pos.second, enemyDirs.getOrElse(i) { 2 }, false) }
         bullets.forEach { b ->
             val bx = ox + (b[0] + .5f) * cell
@@ -98,6 +111,13 @@ class GameView(context: Context) : View(context) {
         }
         drawHud(c)
         drawControls(c)
+        if (System.currentTimeMillis() < bonusMessageUntil) {
+            p.color = 0xFFFFE28A.toInt()
+            p.textAlign = Paint.Align.CENTER
+            p.textSize = cell * .62f
+            c.drawText(bonusMessage, width / 2f, oy + rows * cell + cell * .72f, p)
+            p.textAlign = Paint.Align.LEFT
+        }
 
         if (!started || over) {
             p.color = 0xD9081118.toInt()
