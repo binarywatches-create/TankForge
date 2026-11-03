@@ -26,6 +26,7 @@ class GameView(context: Context) : View(context) {
     private val enemyDirs = mutableListOf<Int>()
     private val enemyTypes = mutableListOf<Int>()
     private val enemyHp = mutableListOf<Int>()
+    private val enemyLastShot = mutableListOf<Long>()
     private val bullets = mutableListOf<FloatArray>()
     private val bonuses = mutableListOf<FloatArray>()
     private var shieldUntil = 0L
@@ -68,6 +69,7 @@ class GameView(context: Context) : View(context) {
         enemyDirs.clear()
         enemyTypes.clear()
         enemyHp.clear()
+        enemyLastShot.clear()
         bullets.clear()
         bonuses.clear()
         shieldUntil = 0L
@@ -177,7 +179,7 @@ class GameView(context: Context) : View(context) {
                     0 -> { shieldUntil = now + 8000L; bonusMessage = "SHIELD ACTIVATED" }
                     1 -> { lives = (lives + 1).coerceAtMost(5); bonusMessage = "REPAIR +1 LIFE" }
                     2 -> { rapidUntil = now + 9000L; bonusMessage = "RAPID FIRE" }
-                    3 -> { enemies.clear(); enemyDirs.clear(); enemyTypes.clear(); enemyHp.clear(); score += 250; bonusMessage = "MEGA BOMB!" }
+                    3 -> { enemies.clear(); enemyDirs.clear(); enemyTypes.clear(); enemyHp.clear(); enemyLastShot.clear(); score += 250; bonusMessage = "MEGA BOMB!" }
                     else -> { weaponUntil = now + 12000L; bonusMessage = "HEAVY CANNON" }
                 }
                 bonusMessageUntil = now + 1800L
@@ -193,6 +195,7 @@ class GameView(context: Context) : View(context) {
                 enemyDirs.add(2)
                 enemyTypes.add(type)
                 enemyHp.add(if (type == 1) 3 else if (type == 3) 2 else 1)
+                enemyLastShot.add(now)
             }
             lastSpawn = now
         }
@@ -221,6 +224,7 @@ class GameView(context: Context) : View(context) {
                     enemyDirs.removeAt(hit)
                     enemyTypes.removeAt(hit)
                     enemyHp.removeAt(hit)
+                    enemyLastShot.removeAt(hit)
                     score += 100
                     if (Random.nextFloat() < .28f && bonuses.size < 2) bonuses.add(floatArrayOf(b[0].coerceIn(2f, cols - 3f), b[1].coerceIn(2f, rows - 3f), Random.nextInt(0, 5).toFloat(), (now + 12000L).toFloat()))
                 }
@@ -244,10 +248,10 @@ class GameView(context: Context) : View(context) {
             val attackDir = alignedAttackDirection(ex, ey, tx, ty)
             if (attackDir >= 0 && hasClearShot(ex, ey, tx, ty, attackDir)) {
                 enemyDirs[i] = attackDir
-                val cooldown = if (type == 1) 2050L else if (type == 2) 1450L else 1150L
-                if (now - lastEnemyShot >= cooldown) {
+                val cooldown = when (type) { 0 -> 1250L; 1 -> 900L; 2 -> 2050L; else -> 1100L }
+                if (now - enemyLastShot.getOrElse(i) { now } >= cooldown) {
                     shoot(ex, ey, attackDir, false)
-                    lastEnemyShot = now
+                    enemyLastShot[i] = now
                 }
                 continue
             }
@@ -255,7 +259,7 @@ class GameView(context: Context) : View(context) {
             val nextDir = findEnemyPathDirection(ex, ey, tx, ty, type, i)
             if (nextDir >= 0) {
                 enemyDirs[i] = nextDir
-                val speed = when (type) { 0 -> .027f; 1 -> .014f; 2 -> .022f; else -> .024f } * dt
+                val speed = when (type) { 0 -> .032f; 1 -> .017f; 2 -> .013f; else -> .022f } * dt
                 val nx = ex + when (nextDir) { 1 -> speed; 3 -> -speed; else -> 0f }
                 val ny = ey + when (nextDir) { 2 -> speed; 0 -> -speed; else -> 0f }
                 val blockedByEnemy = enemies.indices.any { j ->
@@ -304,7 +308,19 @@ class GameView(context: Context) : View(context) {
         val sy = ey.toInt().coerceIn(1, rows - 2)
         val targetX = px.toInt().coerceIn(1, cols - 2)
         val targetY = py.toInt().coerceIn(1, rows - 2)
-        val goals = setOf(
+        val goals = if (type == 3) {
+            // Tactical tanks seek a reachable firing lane several tiles away,
+            // favouring side angles instead of driving straight into the player.
+            buildSet {
+                for (gy in 1 until rows - 1) for (gx in 1 until cols - 1) {
+                    val distance = abs(gx - targetX) + abs(gy - targetY)
+                    if (map[gy][gx] == 0 && distance in 2..5 &&
+                        alignedAttackDirection(gx.toFloat(), gy.toFloat(), px, py) >= 0) {
+                        add(gy * cols + gx)
+                    }
+                }
+            }
+        } else setOf(
             targetY * cols + targetX - 1,
             targetY * cols + targetX + 1,
             (targetY - 1) * cols + targetX,
