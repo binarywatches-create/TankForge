@@ -494,74 +494,117 @@ class GameView(context: Context) : View(context) {
     private fun drawWater(c: Canvas, x: Int, y: Int) {
         val l = ox + x * cell
         val t = oy + y * cell
-        p.color = 0xFF174F78.toInt()
+        val phase = (System.currentTimeMillis() / 170L + x * 3L + y * 5L).toInt()
+        p.color = 0xFF103C61.toInt()
         c.drawRect(l, t, l + cell, t + cell, p)
-        p.color = 0xFF4C9CC4.toInt()
+        p.color = 0xFF17618A.toInt()
+        c.drawRect(l + cell * .04f, t + cell * .08f, l + cell * .96f, t + cell * .92f, p)
+        p.color = 0xFF2C83A9.toInt()
+        c.drawRect(l + cell * .08f, t + cell * .16f, l + cell * .92f, t + cell * .22f, p)
+        p.color = 0xFF0D4B70.toInt()
+        c.drawRect(l + cell * .08f, t + cell * .78f, l + cell * .92f, t + cell * .9f, p)
+        p.color = 0xFF8BD5E5.toInt()
         p.strokeWidth = maxOf(1f, cell * .045f)
-        c.drawLine(l + cell * .14f, t + cell * .32f, l + cell * .72f, t + cell * .32f, p)
-        c.drawLine(l + cell * .34f, t + cell * .68f, l + cell * .88f, t + cell * .68f, p)
-    }
-
-    private fun drawIce(c: Canvas, x: Int, y: Int) {
+        val shift = (phase % 5) * cell * .035f
+        c.drawLine(l + cell * .12f + shift, t + cell * .39f, l + cell * .48f + shift, t + cell * .39f, p)
+        c.drawLine(l + cell * .52f - shift, t + cell * .65f, l + cell * .86f - shift, t + cell * .65f, p)
+        p.color = 0x668CE1F0
+        c.drawCircle(l + cell * (.22f + (phase % 3) * .18f), t + cell * .52f, cell * .035f, p)
+    }    private fun drawIce(c: Canvas, x: Int, y: Int) {
         val l = ox + x * cell
         val t = oy + y * cell
-        p.color = 0xFF9ACBD5.toInt()
+        p.color = 0xFF6C9EAD.toInt()
         c.drawRect(l, t, l + cell, t + cell, p)
+        p.color = 0xFFB5DDE2.toInt()
+        c.drawRect(l + cell * .04f, t + cell * .04f, l + cell * .96f, t + cell * .96f, p)
         p.color = 0xFFDDF7F5.toInt()
+        c.drawRect(l + cell * .08f, t + cell * .1f, l + cell * .72f, t + cell * .16f, p)
+        p.color = 0xFF8CBCC8.toInt()
         p.strokeWidth = maxOf(1f, cell * .035f)
-        c.drawLine(l + cell * .16f, t + cell * .25f, l + cell * .72f, t + cell * .25f, p)
-        c.drawLine(l + cell * .38f, t + cell * .68f, l + cell * .86f, t + cell * .68f, p)
-    }
-
-    private fun drawForestCanopies(c: Canvas) {
+        val variant = (x * 13 + y * 7) % 4
+        c.drawLine(l + cell * .18f, t + cell * .28f, l + cell * (.42f + variant * .04f), t + cell * .5f, p)
+        c.drawLine(l + cell * (.42f + variant * .04f), t + cell * .5f, l + cell * .34f, t + cell * .78f, p)
+        c.drawLine(l + cell * .42f, t + cell * .5f, l + cell * .72f, t + cell * .42f, p)
+        p.color = 0x99FFFFFF.toInt()
+        c.drawCircle(l + cell * .78f, t + cell * .22f, cell * .055f, p)
+    }    private fun drawForestCanopies(c: Canvas) {
         for (y in 0 until rows) for (x in 0 until cols) {
             if (map[y][x] != 4) continue
             val cx = ox + (x + .5f) * cell
             val cy = oy + (y + .5f) * cell
-            p.color = 0xDD174A35.toInt()
-            c.drawCircle(cx, cy, cell * .43f, p)
-            p.color = 0xEE26734A.toInt()
-            c.drawCircle(cx - cell * .12f, cy - cell * .10f, cell * .25f, p)
-            c.drawCircle(cx + cell * .13f, cy + cell * .08f, cell * .24f, p)
-            p.color = 0xFF78A96A.toInt()
-            c.drawCircle(cx - cell * .13f, cy - cell * .16f, cell * .055f, p)
+            // Dark trunk and layered canopy make forest tiles read as dense cover.
+            p.color = 0xFF493B29.toInt()
+            c.drawRect(cx - cell * .07f, cy + cell * .02f, cx + cell * .07f, cy + cell * .39f, p)
+            p.color = 0xFF102F27.toInt()
+            c.drawCircle(cx, cy + cell * .04f, cell * .46f, p)
+            p.color = 0xFF18543A.toInt()
+            c.drawCircle(cx - cell * .17f, cy - cell * .06f, cell * .29f, p)
+            c.drawCircle(cx + cell * .17f, cy - cell * .04f, cell * .29f, p)
+            c.drawCircle(cx, cy - cell * .22f, cell * .28f, p)
+            p.color = 0xFF28774B.toInt()
+            c.drawCircle(cx - cell * .15f, cy - cell * .17f, cell * .17f, p)
+            c.drawCircle(cx + cell * .12f, cy - cell * .10f, cell * .16f, p)
+            p.color = 0xFF72A96A.toInt()
+            c.drawCircle(cx - cell * .19f, cy - cell * .22f, cell * .055f, p)
+            c.drawCircle(cx + cell * .08f, cy - cell * .29f, cell * .045f, p)
+            p.color = 0xFF0B281F.toInt()
+            c.drawArc(cx - cell * .38f, cy - cell * .34f, cx + cell * .38f, cy + cell * .38f, 205f, 125f, false, p)
         }
-    }
-
-    private fun drawBrick(c: Canvas, x: Int, y: Int) {
+    }    private fun drawBrick(c: Canvas, x: Int, y: Int) {
         val l = ox + x * cell
         val t = oy + y * cell
-        p.color = 0xFF60372D.toInt()
-        c.drawRoundRect(l + 1, t + 2, l + cell - 1, t + cell - 1, cell * .07f, cell * .07f, p)
-        p.color = brick
-        c.drawRoundRect(l + 2, t + 2, l + cell - 2, t + cell * .46f, cell * .06f, cell * .06f, p)
-        c.drawRoundRect(l + 2, t + cell * .54f, l + cell - 2, t + cell - 2, cell * .06f, cell * .06f, p)
-        p.color = 0xFFFFB17A.toInt()
-        p.strokeWidth = maxOf(1f, cell * .045f)
-        c.drawLine(l + 3, t + 3, l + cell - 3, t + 3, p)
-        c.drawLine(l + cell * .5f, t + 3, l + cell * .5f, t + cell * .44f, p)
-        c.drawLine(l + cell * .25f, t + cell * .56f, l + cell * .25f, t + cell - 3, p)
-        p.color = 0xFF8D4937.toInt()
-        c.drawLine(l + 3, t + cell * .48f, l + cell - 3, t + cell * .48f, p)
-    }
-
-    private fun drawSteel(c: Canvas, x: Int, y: Int) {
+        val variant = (x * 17 + y * 31) % 5
+        p.color = 0xFF4A2925.toInt()
+        c.drawRect(l + 1, t + 2, l + cell - 1, t + cell - 1, p)
+        p.color = when (variant) { 0 -> 0xFFB85C3D.toInt(); 1 -> 0xFFC9754B.toInt(); 2 -> 0xFFD18456.toInt(); else -> brick }
+        c.drawRect(l + 2, t + 2, l + cell - 2, t + cell * .46f, p)
+        p.color = when (variant) { 1 -> 0xFFB96543.toInt(); 3 -> 0xFFD58A5C.toInt(); else -> 0xFFB65C40.toInt() }
+        c.drawRect(l + 2, t + cell * .54f, l + cell - 2, t + cell - 2, p)
+        p.color = 0xFF713B30.toInt()
+        p.strokeWidth = maxOf(1f, cell * .055f)
+        c.drawLine(l + cell * .5f, t + 2, l + cell * .5f, t + cell * .45f, p)
+        c.drawLine(l + cell * .12f, t + cell * .5f, l + cell * .88f, t + cell * .5f, p)
+        c.drawLine(l + cell * .28f, t + cell * .55f, l + cell * .28f, t + cell - 2, p)
+        p.color = 0xFFFFB27C.toInt()
+        p.strokeWidth = maxOf(1f, cell * .035f)
+        c.drawLine(l + 3, t + 3, l + cell * .44f, t + 3, p)
+        c.drawLine(l + 3, t + 3, l + 3, t + cell * .4f, p)
+        // Small deterministic chips and hairline cracks.
+        if (variant == 2 || variant == 4) {
+            p.color = 0xFF5C3029.toInt()
+            c.drawLine(l + cell * .68f, t + cell * .13f, l + cell * .59f, t + cell * .27f, p)
+            c.drawLine(l + cell * .59f, t + cell * .27f, l + cell * .7f, t + cell * .34f, p)
+        }
+        p.color = 0x66F3C19A
+        c.drawRect(l + cell * .08f, t + cell * .08f, l + cell * .13f, t + cell * .12f, p)
+    }    private fun drawSteel(c: Canvas, x: Int, y: Int) {
         val l = ox + x * cell
         val t = oy + y * cell
-        p.color = 0xFF263D4C.toInt()
-        c.drawRoundRect(l + 1, t + 2, l + cell - 1, t + cell - 1, cell * .09f, cell * .09f, p)
-        p.color = steel
-        c.drawRoundRect(l + 3, t + 3, l + cell - 3, t + cell - 3, cell * .08f, cell * .08f, p)
-        p.color = 0xFFDCEAF0.toInt()
-        p.strokeWidth = maxOf(1f, cell * .04f)
-        c.drawLine(l + 4, t + 4, l + cell - 4, t + 4, p)
-        c.drawCircle(l + cell * .2f, t + cell * .2f, cell * .055f, p)
-        c.drawCircle(l + cell * .8f, t + cell * .8f, cell * .055f, p)
-        p.color = 0xFF506B7B.toInt()
-        c.drawLine(l + cell * .22f, t + cell * .52f, l + cell * .78f, t + cell * .52f, p)
-    }
-
-    private fun tank(c: Canvas, x: Float, y: Float, d: Int, player: Boolean, type: Int = 0) {
+        p.color = 0xFF182C3A.toInt()
+        c.drawRect(l + 1, t + 2, l + cell - 1, t + cell - 1, p)
+        p.color = 0xFF526F80.toInt()
+        c.drawRect(l + 2, t + 2, l + cell - 2, t + cell - 2, p)
+        p.color = 0xFF9FB6C2.toInt()
+        c.drawRect(l + cell * .12f, t + cell * .1f, l + cell * .88f, t + cell * .24f, p)
+        p.color = 0xFF718D9B.toInt()
+        c.drawRect(l + cell * .12f, t + cell * .29f, l + cell * .88f, t + cell * .86f, p)
+        p.color = 0xFF405C6B.toInt()
+        c.drawRect(l + cell * .2f, t + cell * .4f, l + cell * .8f, t + cell * .72f, p)
+        p.color = 0xFFD7E7EC.toInt()
+        val r = cell * .055f
+        c.drawCircle(l + cell * .2f, t + cell * .2f, r, p)
+        c.drawCircle(l + cell * .8f, t + cell * .2f, r, p)
+        c.drawCircle(l + cell * .2f, t + cell * .8f, r, p)
+        c.drawCircle(l + cell * .8f, t + cell * .8f, r, p)
+        p.color = 0xFF526D7B.toInt()
+        c.drawCircle(l + cell * .2f, t + cell * .2f, r * .35f, p)
+        c.drawCircle(l + cell * .8f, t + cell * .2f, r * .35f, p)
+        c.drawCircle(l + cell * .2f, t + cell * .8f, r * .35f, p)
+        c.drawCircle(l + cell * .8f, t + cell * .8f, r * .35f, p)
+        p.color = 0xFFDBE8EC.toInt()
+        p.strokeWidth = maxOf(1f, cell * .035f)
+        c.drawLine(l + cell * .28f, t + cell * .48f, l + cell * .72f, t + cell * .48f, p)
+    }    private fun tank(c: Canvas, x: Float, y: Float, d: Int, player: Boolean, type: Int = 0) {
         val cx = ox + (x + .5f) * cell
         val cy = oy + (y + .5f) * cell
         val hull = if (player) 0xFF4FAD72.toInt() else when (type) { 1 -> 0xFF657B9D.toInt(); 2 -> 0xFFD49A42.toInt(); 3 -> 0xFF9A68B8.toInt(); else -> 0xFFCF514A.toInt() }
@@ -569,55 +612,77 @@ class GameView(context: Context) : View(context) {
         val save = c.save()
         c.rotate(d * 90f, cx, cy)
 
-        // Soft ground shadow and rugged tracks.
-        p.color = 0x77071318.toInt()
-        c.drawOval(cx - cell * .43f, cy + cell * .27f, cx + cell * .43f, cy + cell * .48f, p)
-        p.color = 0xFF111B20.toInt()
-        c.drawRoundRect(cx - cell * .45f, cy - cell * .39f, cx - cell * .23f, cy + cell * .39f, cell * .07f, cell * .07f, p)
-        c.drawRoundRect(cx + cell * .23f, cy - cell * .39f, cx + cell * .45f, cy + cell * .39f, cell * .07f, cell * .07f, p)
-        p.color = 0xFF65747A.toInt()
+        // Ground shadow, twin tracks and animated individual tread plates.
+        p.color = 0x88071318.toInt()
+        c.drawOval(cx - cell * .46f, cy + cell * .25f, cx + cell * .46f, cy + cell * .49f, p)
+        p.color = 0xFF10191D.toInt()
+        c.drawRoundRect(cx - cell * .46f, cy - cell * .4f, cx - cell * .22f, cy + cell * .4f, cell * .06f, cell * .06f, p)
+        c.drawRoundRect(cx + cell * .22f, cy - cell * .4f, cx + cell * .46f, cy + cell * .4f, cell * .06f, cell * .06f, p)
+        p.color = 0xFF78868A.toInt()
+        val treadShift = (System.currentTimeMillis() / 95L % 2L).toInt()
+        for (i in -3..3) {
+            val yy = cy + (i + treadShift * .5f) * cell * .105f
+            c.drawRect(cx - cell * .445f, yy - cell * .022f, cx - cell * .235f, yy + cell * .022f, p)
+            c.drawRect(cx + cell * .235f, yy - cell * .022f, cx + cell * .445f, yy + cell * .022f, p)
+        }
+        p.color = 0xFF303D40.toInt()
         for (i in -2..2) {
             val yy = cy + i * cell * .145f
-            c.drawRoundRect(cx - cell * .43f, yy - cell * .035f, cx - cell * .25f, yy + cell * .035f, cell * .025f, cell * .025f, p)
-            c.drawRoundRect(cx + cell * .25f, yy - cell * .035f, cx + cell * .43f, yy + cell * .035f, cell * .025f, cell * .025f, p)
+            c.drawCircle(cx - cell * .335f, yy, cell * .045f, p)
+            c.drawCircle(cx + cell * .335f, yy, cell * .045f, p)
         }
 
-        // Layered armoured hull with bevels.
-        p.color = if (player) 0xFF1F704D.toInt() else 0xFF873A38.toInt()
-        c.drawRoundRect(cx - cell * .31f, cy - cell * .34f, cx + cell * .31f, cy + cell * .34f, cell * .09f, cell * .09f, p)
+        // Armoured hull with bevels, top plate and maintenance panels.
+        p.color = 0xFF18272A.toInt()
+        c.drawRoundRect(cx - cell * .32f, cy - cell * .35f, cx + cell * .32f, cy + cell * .35f, cell * .09f, cell * .09f, p)
+        p.color = if (player) 0xFF286C4C.toInt() else 0xFF783B38.toInt()
+        c.drawRoundRect(cx - cell * .29f, cy - cell * .32f, cx + cell * .29f, cy + cell * .31f, cell * .07f, cell * .07f, p)
         p.color = hull
-        c.drawRoundRect(cx - cell * .285f, cy - cell * .31f, cx + cell * .285f, cy + cell * .29f, cell * .075f, cell * .075f, p)
+        c.drawRoundRect(cx - cell * .265f, cy - cell * .29f, cx + cell * .265f, cy + cell * .27f, cell * .055f, cell * .055f, p)
         p.color = highlight
-        c.drawRoundRect(cx - cell * .22f, cy - cell * .27f, cx + cell * .18f, cy - cell * .21f, cell * .025f, cell * .025f, p)
-        p.color = if (player) 0xFF26744E.toInt() else 0xFF923C37.toInt()
-        c.drawRect(cx - cell * .22f, cy + cell * .13f, cx + cell * .22f, cy + cell * .22f, p)
-
-        // Turret ring, commander hatch and cannon.
+        c.drawRoundRect(cx - cell * .21f, cy - cell * .26f, cx + cell * .15f, cy - cell * .205f, cell * .02f, cell * .02f, p)
+        p.color = if (player) 0xFF347F56.toInt() else 0xFF9A4B43.toInt()
+        c.drawRect(cx - cell * .2f, cy + cell * .13f, cx + cell * .2f, cy + cell * .21f, p)
+        p.color = 0xFF263A38.toInt()
+        c.drawRoundRect(cx - cell * .17f, cy - cell * .04f, cx + cell * .17f, cy + cell * .105f, cell * .025f, cell * .025f, p)
+        p.color = 0xFF9BAE9A.toInt()
+        for (i in -1..1) c.drawRect(cx + i * cell * .075f - cell * .012f, cy - cell * .015f, cx + i * cell * .075f + cell * .012f, cy + cell * .065f, p)
         p.color = 0xFF17262A.toInt()
-        c.drawCircle(cx, cy, cell * .205f, p)
-        p.color = if (player) 0xFF75D58D.toInt() else 0xFFE97965.toInt()
-        c.drawCircle(cx, cy, cell * .17f, p)
+        c.drawCircle(cx, cy, cell * .215f, p)
+        p.color = if (player) 0xFF75D58D.toInt() else when (type) { 1 -> 0xFF9DB7D7.toInt(); 2 -> 0xFFE6B85E.toInt(); 3 -> 0xFFC59AE8.toInt(); else -> 0xFFE97965.toInt() }
+        c.drawCircle(cx, cy, cell * .178f, p)
         p.color = 0xFF263A3C.toInt()
-        c.drawCircle(cx, cy, cell * .115f, p)
-        p.color = 0xFFE3E9D0.toInt()
-        c.drawRoundRect(cx - cell * .055f, cy - cell * .39f, cx + cell * .055f, cy - cell * .06f, cell * .025f, cell * .025f, p)
-        p.color = 0xFF26343A.toInt()
-        c.drawCircle(cx, cy - cell * .18f, cell * if (!player && type == 1) .105f else .075f, p)
-        p.color = if (!player && type == 2) 0xFFFFF0A0.toInt() else 0xFFFFD27B.toInt()
-        c.drawCircle(cx, cy - cell * .18f, cell * .025f, p)
+        c.drawCircle(cx, cy, cell * .125f, p)
+        p.color = highlight
+        c.drawCircle(cx - cell * .055f, cy - cell * .06f, cell * .035f, p)
+
+        // Long cannon with a dark bore and a visible muzzle.
+        p.color = 0xFF172326.toInt()
+        c.drawRoundRect(cx - cell * .065f, cy - cell * .46f, cx + cell * .065f, cy - cell * .12f, cell * .025f, cell * .025f, p)
+        p.color = if (player) 0xFFD1E2C6.toInt() else 0xFFE0D1C7.toInt()
+        c.drawRect(cx - cell * .035f, cy - cell * .43f, cx + cell * .035f, cy - cell * .15f, p)
+        p.color = 0xFF27383B.toInt()
+        c.drawRect(cx - cell * .085f, cy - cell * .47f, cx + cell * .085f, cy - cell * .405f, p)
+        p.color = 0xFFFFD27B.toInt()
+        c.drawRect(cx - cell * .025f, cy - cell * .455f, cx + cell * .025f, cy - cell * .425f, p)
+
+        // Commander hatch, hinges and small identification mark.
+        p.color = 0xFF1A292B.toInt()
+        c.drawCircle(cx, cy - cell * .18f, cell * .082f, p)
+        p.color = highlight
+        c.drawArc(cx - cell * .07f, cy - cell * .25f, cx + cell * .07f, cy - cell * .11f, 190f, 160f, false, p)
+        p.color = if (player) 0xFFFFD66F.toInt() else 0xFFFFD6C9.toInt()
+        c.drawCircle(cx, cy + cell * .245f, cell * .04f, p)
+        p.color = 0xFF172326.toInt()
+        c.drawCircle(cx - cell * .23f, cy - cell * .22f, cell * .025f, p)
+        c.drawCircle(cx + cell * .23f, cy - cell * .22f, cell * .025f, p)
         if (!player && type == 3) {
             p.color = 0xFFE5C4FF.toInt()
             c.drawCircle(cx - cell * .34f, cy, cell * .055f, p)
             c.drawCircle(cx + cell * .34f, cy, cell * .055f, p)
         }
-
-        // Small side insignia.
-        p.color = if (player) 0xFFFFD66F.toInt() else 0xFFFFD6C9.toInt()
-        c.drawCircle(cx, cy + cell * .255f, cell * .045f, p)
         c.restoreToCount(save)
-    }
-
-    private fun drawBonus(c: Canvas, b: FloatArray) {
+    }    private fun drawBonus(c: Canvas, b: FloatArray) {
         val x = ox + (b[0] + .5f) * cell
         val y = oy + (b[1] + .5f) * cell
         val colors = intArrayOf(0xFF4CB9F0.toInt(), 0xFF67D58A.toInt(), 0xFFFFD34F.toInt(), 0xFFE86D55.toInt(), 0xFFB88BFF.toInt())
