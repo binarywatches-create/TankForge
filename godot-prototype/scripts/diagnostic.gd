@@ -13,21 +13,26 @@ func _ready() -> void:
     status_label.add_theme_font_size_override("font_size", 30)
     status_label.add_theme_color_override("font_color", Color.WHITE)
     add_child(status_label)
-    status_label.text = "DISPLAY OK\\nLoading battlefield scene..."
+    status_label.text = "DISPLAY OK\nLoading battlefield scene..."
     await get_tree().create_timer(2.0).timeout
 
     var packed = load("res://scenes/battlefield.tscn")
     if packed == null:
         status_label.text = "ERROR: battlefield.tscn failed to load"
         return
-    status_label.text = "SCENE RESOURCE LOADED\\nCreating battlefield instance..."
+    status_label.text = "SCENE RESOURCE LOADED\nCreating battlefield instance..."
     await get_tree().create_timer(2.0).timeout
 
     var instance = packed.instantiate()
     if instance == null:
         status_label.text = "ERROR: battlefield instance is null"
         return
-    status_label.text = "INSTANCE CREATED\\nAdding battlefield to scene tree..."
+    status_label.text = "INSTANCE CREATED\nStarting battlefield..."
     await get_tree().create_timer(2.0).timeout
+
+    # Remove every diagnostic overlay before displaying the game.
+    $Background.queue_free()
+    $Message.queue_free()
+    status_label.queue_free()
+    await get_tree().process_frame
     add_child(instance)
-    status_label.text = "BATTLEFIELD ADDED\\nIf this remains visible, check for script errors."
