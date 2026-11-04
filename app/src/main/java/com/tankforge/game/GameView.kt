@@ -12,11 +12,13 @@ import kotlin.random.Random
 
 class GameView(context: Context) : View(context) {
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val cols = 22
-    private val rows = 14
+    private val cols = 40
+    private val rows = 30
     private var cell = 24f
     private var ox = 0f
     private var oy = 0f
+    private var viewTop = 0f
+    private var viewBottom = 0f
     private val map = Array(rows) { IntArray(cols) }
     private val brickHp = Array(rows) { IntArray(cols) }
     // Short-lived visual particles: x, y, vx, vy, remaining frames, color.
@@ -102,11 +104,37 @@ class GameView(context: Context) : View(context) {
     override fun onDraw(c: Canvas) {
         super.onDraw(c)
         c.drawColor(0xFF101B20.toInt())
-        cell = min(height / (rows + 1.25f), width * .72f / cols)
-        ox = (width - cols * cell) / 2f
-        oy = (height - rows * cell) / 2f
+        // Size the world for landscape play. When the map is narrower than the
+        // screen, centre it; only clamp the camera when the map is larger.
+        val screenWidth = width.toFloat().coerceAtLeast(1f)
+        val screenHeight = height.toFloat().coerceAtLeast(1f)
+        cell = min(screenWidth / 13.2f, screenHeight / 20f).coerceAtLeast(1f)
+        viewTop = (cell * 1.18f).coerceAtMost(screenHeight * .25f)
+        viewBottom = (screenHeight - cell * 2.55f)
+            .coerceAtLeast(viewTop + 1f)
+            .coerceAtMost(screenHeight)
+
+        val mapWidth = cols * cell
+        ox = if (mapWidth <= screenWidth) {
+            (screenWidth - mapWidth) / 2f
+        } else {
+            (screenWidth / 2f - (tx + .5f) * cell)
+                .coerceIn(screenWidth - mapWidth, 0f)
+        }
+
+        val mapHeight = rows * cell
+        val playfieldHeight = viewBottom - viewTop
+        oy = if (mapHeight <= playfieldHeight) {
+            viewTop + (playfieldHeight - mapHeight) / 2f
+        } else {
+            val cameraCenterY = (viewTop + viewBottom) / 2f
+            (cameraCenterY - (ty + .5f) * cell)
+                .coerceIn(viewBottom - mapHeight, viewTop)
+        }
 
         if (started && !over) updateGame()
+        val worldSave = c.save()
+        c.clipRect(0f, viewTop, width.toFloat(), viewBottom)
         drawField(c)
         for (y in 0 until rows) for (x in 0 until cols) {
             when (map[y][x]) {
@@ -129,13 +157,14 @@ class GameView(context: Context) : View(context) {
             p.color = 0xFFFFA52E.toInt()
             c.drawCircle(bx, by, cell * .085f, p)
         }
+        c.restoreToCount(worldSave)
         drawHud(c)
         drawControls(c)
         if (System.currentTimeMillis() < bonusMessageUntil) {
             p.color = 0xFFFFE28A.toInt()
             p.textAlign = Paint.Align.CENTER
-            p.textSize = cell * .62f
-            c.drawText(bonusMessage, width / 2f, oy + rows * cell + cell * .72f, p)
+            p.textSize = cell * .42f
+            c.drawText(bonusMessage, width / 2f, viewBottom - cell * .18f, p)
             p.textAlign = Paint.Align.LEFT
         }
 
@@ -627,30 +656,34 @@ class GameView(context: Context) : View(context) {
     }
 
     private fun drawHud(c: Canvas) {
+        val left = cell * .16f
+        val right = width - cell * .16f
+        val top = cell * .12f
+        val bottom = viewTop - cell * .12f
         p.color = 0xFF101E28.toInt()
-        c.drawRoundRect(ox - cell * .02f, oy - cell * .8f, ox + cols * cell + cell * .02f, oy - cell * .08f, cell * .16f, cell * .16f, p)
+        c.drawRoundRect(left, top, right, bottom, cell * .16f, cell * .16f, p)
         p.color = 0xFF4B6976.toInt()
         p.style = Paint.Style.STROKE
         p.strokeWidth = maxOf(1f, cell * .035f)
-        c.drawRoundRect(ox, oy - cell * .78f, ox + cols * cell, oy - cell * .1f, cell * .13f, cell * .13f, p)
+        c.drawRoundRect(left, top, right, bottom, cell * .13f, cell * .13f, p)
         p.style = Paint.Style.FILL
         p.color = 0xFFEAF0F2.toInt()
-        p.textSize = cell * .48f
+        p.textSize = cell * .42f
         p.typeface = android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.BOLD)
         p.textAlign = Paint.Align.LEFT
-        c.drawText("SCORE  $score", ox + cell * .3f, oy - cell * .32f, p)
+        c.drawText("SCORE  $score", left + cell * .22f, bottom - cell * .22f, p)
         p.textAlign = Paint.Align.CENTER
         p.color = when { System.currentTimeMillis() < shieldUntil -> 0xFF67D8FF.toInt(); System.currentTimeMillis() < rapidUntil -> 0xFFFFD34F.toInt(); System.currentTimeMillis() < weaponUntil -> 0xFFB88BFF.toInt(); else -> 0xFFB8C8CC.toInt() }
-        c.drawText(when { System.currentTimeMillis() < shieldUntil -> "SHIELD"; System.currentTimeMillis() < rapidUntil -> "RAPID"; System.currentTimeMillis() < weaponUntil -> "HEAVY"; else -> "" }, ox + cols * cell / 2f, oy - cell * .32f, p)
+        c.drawText(when { System.currentTimeMillis() < shieldUntil -> "SHIELD"; System.currentTimeMillis() < rapidUntil -> "RAPID"; System.currentTimeMillis() < weaponUntil -> "HEAVY"; else -> "" }, width / 2f, bottom - cell * .22f, p)
         p.textAlign = Paint.Align.RIGHT
         p.color = 0xFFFFD36A.toInt()
-        c.drawText("LIVES  $lives", ox + cols * cell - cell * .3f, oy - cell * .32f, p)
+        c.drawText("LIVES  $lives", right - cell * .22f, bottom - cell * .22f, p)
         p.textAlign = Paint.Align.LEFT
     }
 
     private fun drawControls(c: Canvas) {
         val s = cell * 1.5f
-        val cx = ox + s * .8f
+        val cx = s * .8f
         val cy = height - s * 1.25f
         val labels = listOf("▲", "▶", "▼", "◀")
         for (d in 0..3) {
@@ -701,7 +734,7 @@ class GameView(context: Context) : View(context) {
             val s = cell * 1.5f
             fire = e.x > width - s * 2.2f && e.y > height - s * 2.2f
             if (!fire && e.x < width * .48f) {
-                val dx = e.x - (ox + s * .8f)
+                val dx = e.x - (s * .8f)
                 val dy = e.y - (height - s * 1.25f)
                 move = if (abs(dx) > abs(dy)) { if (dx > 0) 1 else 3 } else { if (dy > 0) 2 else 0 }
             } else if (!fire) {
