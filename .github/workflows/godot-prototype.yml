@@ -1,0 +1,29 @@
+name: Godot 2.5D prototype validation
+
+on:
+  push:
+    branches: [ 'prototype/**' ]
+    paths:
+      - 'godot-prototype/**'
+      - '.github/workflows/godot-prototype.yml'
+  pull_request:
+    paths:
+      - 'godot-prototype/**'
+      - '.github/workflows/godot-prototype.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Godot 4.3
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.3.0
+          use-dotnet: false
+      - name: Validate project and scripts
+        run: godot --headless --path godot-prototype --editor --quit
