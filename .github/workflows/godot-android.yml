@@ -57,6 +57,16 @@ jobs:
       - name: Validate project
         run: godot --headless --path godot-prototype --editor --quit
 
+      - name: Diagnose Android export configuration
+        run: |
+          echo "Godot editor settings:"
+          cat "$HOME/.config/godot/editor_settings-4.tres"
+          echo "Android SDK:"
+          ls -la "$ANDROID_HOME"
+          echo "Godot Android export templates:"
+          ls -la "$HOME/.local/share/godot/export_templates/4.3.stable" | grep -E 'android|Android' || true
+          godot --headless --path godot-prototype --editor --quit --verbose
+
       - name: Export Android APK
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
