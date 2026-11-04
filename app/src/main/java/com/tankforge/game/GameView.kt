@@ -255,7 +255,7 @@ class GameView(context: Context) : View(context) {
         }
 
         if (bossPending && enemies.isEmpty() && now - lastSpawn >= 900L) {
-            val bossX = (cols / 2).toFloat()
+            val bossX = 10f
             enemies.add(bossX to 2f)
             enemyDirs.add(2)
             enemyTypes.add(4)
