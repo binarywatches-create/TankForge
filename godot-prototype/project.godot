@@ -2,7 +2,7 @@ config_version=5
 
 [application]
 config/name="TankForge 2.5D Prototype"
-run/main_scene="res://scenes/diagnostic.tscn"
+run/main_scene="res://scenes/battlefield.tscn"
 
 [display]
 window/size/viewport_width=1280
