@@ -24,8 +24,23 @@ var score := 12450
 var touch_move := Vector2.ZERO
 var touch_fire := false
 var touch_points: Dictionary = {}
+var cover: Array[Dictionary] = []
+var trees: Array[Vector2i] = []
+var navigation := AStarGrid2D.new()
+var navigation_dirty := true
+const GRID_ORIGIN := Vector2i(12, 9)
+const GRID_SIZE := Vector2i(24, 18)
+const COVER_BRICK := [Vector2i(-7, -3), Vector2i(-6, -3), Vector2i(-5, -3), Vector2i(6, 3), Vector2i(7, 3), Vector2i(8, 3)]
+const COVER_METAL := [Vector2i(-8, 4), Vector2i(-7, 4), Vector2i(7, -4)]
+const TREE_CELLS := [Vector2i(-9, -5), Vector2i(-8, -6), Vector2i(-9, -7), Vector2i(8, -5), Vector2i(9, -6), Vector2i(10, -6)]
 
 func _ready() -> void:
+    trees.assign(TREE_CELLS)
+    for cell in COVER_BRICK:
+        cover.append({"cell": cell, "hp": 3, "max_hp": 3, "metal": false})
+    for cell in COVER_METAL:
+        cover.append({"cell": cell, "hp": 5, "max_hp": 5, "metal": true})
+    _rebuild_navigation()
     enemies = [
         {"pos": Vector2(4.0, -2.0), "angle": PI, "hp": 2, "cooldown": 1.0, "paint": Color(0.66, 0.30, 0.22)},
         {"pos": Vector2(-5.0, 2.0), "angle": -0.35, "hp": 2, "cooldown": 2.0, "paint": Color(0.72, 0.57, 0.25)}
@@ -88,9 +103,18 @@ func _update_player(delta: float) -> void:
     movement += touch_move
     if movement.length() > 0.01:
         movement = movement.normalized()
-        player_pos += movement * delta * 2.7
-        player_pos.x = clampf(player_pos.x, -9.0, 9.0)
-        player_pos.y = clampf(player_pos.y, -6.0, 6.0)
+        var next_pos := player_pos + movement * delta * 2.7
+        next_pos.x = clampf(next_pos.x, -9.0, 9.0)
+        next_pos.y = clampf(next_pos.y, -6.0, 6.0)
+        if not _is_blocked(next_pos):
+            player_pos = next_pos
+        else:
+            var slide_x := Vector2(next_pos.x, player_pos.y)
+            var slide_y := Vector2(player_pos.x, next_pos.y)
+            if not _is_blocked(slide_x):
+                player_pos = slide_x
+            elif not _is_blocked(slide_y):
+                player_pos = slide_y
         player_angle = movement.angle()
     fire_cooldown = maxf(0.0, fire_cooldown - delta)
     if (Input.is_key_pressed(KEY_SPACE) or touch_fire) and fire_cooldown <= 0.0:
@@ -132,14 +156,18 @@ func _draw_world() -> void:
             if (x * 11 + y * 5) % 17 == 0:
                 draw_circle(center + Vector2(8, 5), 2.0, Color(0.08, 0.13, 0.11, 0.65))
 
-    # Chunky destructible-looking brick barricades and steel cover.
-    for cell in [Vector2i(-7, -3), Vector2i(-6, -3), Vector2i(-5, -3), Vector2i(6, 3), Vector2i(7, 3), Vector2i(8, 3)]:
-        _draw_wall(_iso(float(cell.x), float(cell.y)), Color(0.56, 0.30, 0.20))
-    for cell in [Vector2i(-8, 4), Vector2i(-7, 4), Vector2i(7, -4)]:
-        _draw_wall(_iso(float(cell.x), float(cell.y)), Color(0.38, 0.48, 0.53), true)
+    # Live cover state: destroyed sections disappear from the battlefield.
+    for obstacle in cover:
+        var cell: Vector2i = obstacle.cell
+        var tint := Color(0.38, 0.48, 0.53) if obstacle.metal else Color(0.56, 0.30, 0.20)
+        var damage := 1.0 - float(obstacle.hp) / float(obstacle.max_hp)
+        _draw_wall(_iso(float(cell.x), float(cell.y)), tint.darkened(damage * 0.28), obstacle.metal)
+        if damage > 0.0:
+            var mark := _iso(float(cell.x), float(cell.y))
+            draw_line(mark + Vector2(-13,-20), mark + Vector2(8,-7), Color(0.12,0.08,0.06,0.8), 2.0)
 
-    # Small conifers are drawn after terrain so their canopies overlap nearby ground.
-    for cell in [Vector2i(-9, -5), Vector2i(-8, -6), Vector2i(-9, -7), Vector2i(8, -5), Vector2i(9, -6), Vector2i(10, -6)]:
+    # Trees are solid navigation obstacles.
+    for cell in trees:
         _draw_tree(_iso(float(cell.x), float(cell.y)))
 
     # Shallow water strip with highlights.
@@ -241,9 +269,26 @@ func _update_combat(delta: float) -> void:
         var enemy: Dictionary = enemies[i]
         var to_player: Vector2 = player_pos - enemy.pos
         var distance := to_player.length()
+        var repath_timer: float = float(enemy.get("repath_timer", 0.0)) - delta
+        var path: Array = enemy.get("path", [])
+        if repath_timer <= 0.0 or path.is_empty():
+            path = _find_path(enemy.pos, player_pos)
+            repath_timer = 0.45
+        enemy.repath_timer = repath_timer
+        enemy.path = path
         if distance > 3.0:
-            var direction := to_player.normalized()
-            enemy.pos += direction * delta * 0.48
+            var waypoint := player_pos
+            if not path.is_empty():
+                waypoint = _cell_to_world(path[0])
+                if enemy.pos.distance_to(waypoint) < 0.22:
+                    path.pop_front()
+                    enemy.path = path
+                    if not path.is_empty():
+                        waypoint = _cell_to_world(path[0])
+            var direction := (waypoint - enemy.pos).normalized()
+            var candidate: Vector2 = enemy.pos + direction * delta * 0.48
+            if not _is_blocked(candidate):
+                enemy.pos = candidate
             enemy.angle = direction.angle()
         enemy.cooldown = maxf(0.0, enemy.cooldown - delta)
         if distance < 10.0 and enemy.cooldown <= 0.0:
@@ -257,7 +302,20 @@ func _update_combat(delta: float) -> void:
         shell.pos += shell.vel * delta
         shell.life -= delta
         var hit := false
-        if int(shell.team) == 0:
+        var obstacle_index := _cover_index_at(shell.pos, 0.52)
+        if obstacle_index >= 0:
+            var obstacle: Dictionary = cover[obstacle_index]
+            obstacle.hp -= 1
+            var impact_color := Color(0.72, 0.78, 0.82) if obstacle.metal else Color(1.0, 0.55, 0.22)
+            _burst(_iso(shell.pos.x, shell.pos.y), impact_color)
+            if obstacle.hp <= 0:
+                _burst(_iso(float(obstacle.cell.x), float(obstacle.cell.y)), Color(0.75, 0.48, 0.28))
+                cover.remove_at(obstacle_index)
+                navigation_dirty = true
+            else:
+                cover[obstacle_index] = obstacle
+            hit = true
+        if not hit and int(shell.team) == 0:
             for j in range(enemies.size() - 1, -1, -1):
                 var enemy: Dictionary = enemies[j]
                 if shell.pos.distance_to(enemy.pos) < 0.85:
@@ -272,7 +330,7 @@ func _update_combat(delta: float) -> void:
                     else:
                         enemies[j] = enemy
                     break
-        elif shell.pos.distance_to(player_pos) < 0.8:
+        elif not hit and shell.pos.distance_to(player_pos) < 0.8:
             player_health = maxi(0, player_health - 1)
             _burst(_iso(player_pos.x, player_pos.y), Color(1.0, 0.25, 0.16))
             hit = true
@@ -280,6 +338,73 @@ func _update_combat(delta: float) -> void:
             shells.remove_at(i)
         else:
             shells[i] = shell
+
+func _world_to_cell(pos: Vector2) -> Vector2i:
+    return Vector2i(roundi(pos.x) + GRID_ORIGIN.x, roundi(pos.y) + GRID_ORIGIN.y)
+
+func _cell_to_world(cell: Vector2i) -> Vector2:
+    return Vector2(cell.x - GRID_ORIGIN.x, cell.y - GRID_ORIGIN.y)
+
+func _cell_in_bounds(cell: Vector2i) -> bool:
+    return cell.x >= 0 and cell.y >= 0 and cell.x < GRID_SIZE.x and cell.y < GRID_SIZE.y
+
+func _cover_index_at(pos: Vector2, radius: float) -> int:
+    for i in range(cover.size()):
+        var cell: Vector2i = cover[i].cell
+        if pos.distance_to(Vector2(cell)) <= radius:
+            return i
+    return -1
+
+func _is_blocked(pos: Vector2) -> bool:
+    var cell := _world_to_cell(pos)
+    if not _cell_in_bounds(cell):
+        return true
+    for obstacle in cover:
+        if obstacle.cell == Vector2i(cell.x - GRID_ORIGIN.x, cell.y - GRID_ORIGIN.y):
+            return true
+    return trees.has(Vector2i(cell.x - GRID_ORIGIN.x, cell.y - GRID_ORIGIN.y))
+
+func _rebuild_navigation() -> void:
+    navigation.region = Rect2i(0, 0, GRID_SIZE.x, GRID_SIZE.y)
+    navigation.cell_size = Vector2.ONE
+    navigation.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER
+    navigation.update()
+    for obstacle in cover:
+        var cell: Vector2i = obstacle.cell + GRID_ORIGIN
+        if _cell_in_bounds(cell):
+            navigation.set_point_solid(cell, true)
+    for tree_cell in trees:
+        var cell: Vector2i = tree_cell + GRID_ORIGIN
+        if _cell_in_bounds(cell):
+            navigation.set_point_solid(cell, true)
+    navigation_dirty = false
+
+func _find_path(from_pos: Vector2, to_pos: Vector2) -> Array:
+    if navigation_dirty:
+        _rebuild_navigation()
+    var start := _world_to_cell(from_pos)
+    var goal := _world_to_cell(to_pos)
+    if not _cell_in_bounds(start) or not _cell_in_bounds(goal):
+        return []
+    if navigation.is_point_solid(goal):
+        goal = _nearest_open_cell(goal)
+    if goal == Vector2i(-1, -1):
+        return []
+    var ids := navigation.get_id_path(start, goal)
+    var result: Array = []
+    for id in ids:
+        if id != start:
+            result.append(id)
+    return result
+
+func _nearest_open_cell(origin: Vector2i) -> Vector2i:
+    for radius in range(1, 4):
+        for y in range(-radius, radius + 1):
+            for x in range(-radius, radius + 1):
+                var candidate := origin + Vector2i(x, y)
+                if _cell_in_bounds(candidate) and not navigation.is_point_solid(candidate):
+                    return candidate
+    return Vector2i(-1, -1)
 
 func _burst(point: Vector2, tint: Color) -> void:
     for n in range(12):
