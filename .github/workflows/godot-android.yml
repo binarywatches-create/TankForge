@@ -29,7 +29,7 @@ jobs:
       - name: Install Android platform and build tools
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" --licenses
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-34" "build-tools;34.0.0" "cmdline-tools;latest" "cmake;3.10.2.4988404" "ndk;23.2.8568313"
 
       - name: Install Godot 4.3
         uses: chickensoft-games/setup-godot@v2
@@ -75,7 +75,11 @@ jobs:
       - name: Export Android APK
         run: |
           mkdir -p build
-          godot --headless --path godot-prototype --export-debug "Android" build/TankForge-2.5D-debug.apk
+          test -x "$ANDROID_HOME/platform-tools/adb"
+          test -x "$ANDROID_HOME/build-tools/34.0.0/apksigner"
+          test -d "$ANDROID_HOME/ndk/23.2.8568313"
+          test -d "$ANDROID_HOME/cmake/3.10.2.4988404"
+          godot --headless --verbose --path godot-prototype --export-debug "Android" ../build/TankForge-2.5D-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
