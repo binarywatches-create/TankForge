@@ -1,20 +1,25 @@
-# TankForge 2.5D visual prototype
+# TankForge 2.5D prototype
 
 This is a separate Godot 4 prototype branch. It does not replace the working Kotlin/Canvas Android app.
 
-## Current visual target
-- Isometric battlefield with layered terrain, bevelled cover, trees and water
-- Custom-drawn 2.5D tank silhouettes with track details, layered armour, turrets and barrels
-- Ambient ground lighting, contact shadows, muzzle flash and animated dust
-- Landscape 1280x720 composition
+## Implemented prototype systems
+- Isometric battlefield with varied ground tiles, cover, trees, water and crater details
+- Layered tank silhouettes with hull, turret, barrel, tracks, contact shadows and team colors
+- Animated muzzle flash, recoil, dust, shells, impact bursts, sparks and smoke
+- Basic combat loop: enemy pursuit and firing, player damage, enemy damage and score
+- Keyboard controls for desktop testing
+- Multi-touch joystick and fire zones for Android landscape play
+- Compatibility renderer and 1280x720 landscape viewport
 
-## Run
+## Run locally
 Open this folder in Godot 4.3 or newer and press F6/F5 (main scene is configured).
 
-## Next development passes
-1. Validate the scene in Godot 4 and capture a reference screenshot.
-2. Replace procedural tank drawings with proper layered sprite assets and skeletal/part animation.
-3. Add destructible environment, projectiles, explosions, lighting and mobile touch controls.
-4. Port the proven TankForge gameplay systems and prepare Android export templates/CI.
+## Android build
+The Android export preset is configured for a debug APK. The GitHub Actions workflow `.github/workflows/godot-android.yml` exports the APK and uploads it as the `TankForge-2.5D-debug-apk` artifact when the workflow succeeds.
 
-The prototype intentionally uses the Compatibility renderer as a conservative mobile baseline.
+## Known prototype limitations
+- Tank art is currently procedural vector drawing, not final sprite-sheet artwork or skeletal animation.
+- Combat is a foundation: no obstacle-aware pathfinding, destructible cover, campaign progression, audio or persistence yet.
+- CI validation confirms project/script loading; the Android APK still needs installation and play testing on a physical device.
+
+The prototype intentionally uses the Compatibility renderer as a conservative mobile baseline. The existing 0.9.2 Android app remains separate and unchanged.
