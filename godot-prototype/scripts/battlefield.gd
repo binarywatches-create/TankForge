@@ -12,6 +12,9 @@ var clock := 0.0
 var muzzle_flash := 0.0
 var recoil := 0.0
 var track_phase := 0.0
+var player_pos := Vector2.ZERO
+var player_angle := 0.0
+var fire_cooldown := 0.0
 var smoke: Array[Dictionary] = []
 var sparks: Array[Dictionary] = []
 
@@ -21,6 +24,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
     clock += delta
     track_phase += delta * 7.0
+    _update_player(delta)
     muzzle_flash = maxf(0.0, muzzle_flash - delta * 3.5)
     recoil = move_toward(recoil, 0.0, delta * 4.0)
     if fmod(clock, 0.18) < delta:
@@ -31,7 +35,7 @@ func _process(delta: float) -> void:
 func _draw() -> void:
     _draw_background()
     _draw_world()
-    _draw_tank(Vector2(0.0, 0.0), 0.0, Color(0.24, 0.57, 0.39), true)
+    _draw_tank(player_pos, player_angle, Color(0.24, 0.57, 0.39), true)
     _draw_tank(Vector2(4.0, -2.0), PI, Color(0.66, 0.30, 0.22), false)
     _draw_tank(Vector2(-5.0, 2.0), -0.35, Color(0.72, 0.57, 0.25), false)
     _draw_particles()
@@ -40,6 +44,28 @@ func _draw() -> void:
 
 func _iso(x: float, y: float, z: float = 0.0) -> Vector2:
     return ORIGIN + Vector2((x - y) * TILE_W * 0.5, (x + y) * TILE_H * 0.5 - z)
+
+func _update_player(delta: float) -> void:
+    var movement := Vector2(
+        float(Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT)) - float(Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT)),
+        float(Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN)) - float(Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP))
+    )
+    if movement.length() > 0.01:
+        movement = movement.normalized()
+        player_pos += movement * delta * 2.7
+        player_pos.x = clampf(player_pos.x, -9.0, 9.0)
+        player_pos.y = clampf(player_pos.y, -6.0, 6.0)
+        player_angle = movement.angle()
+    fire_cooldown = maxf(0.0, fire_cooldown - delta)
+    if Input.is_key_pressed(KEY_SPACE) and fire_cooldown <= 0.0:
+        muzzle_flash = 1.0
+        recoil = 1.0
+        fire_cooldown = 0.22
+        var muzzle := _iso(player_pos.x, player_pos.y) + Vector2(cos(player_angle), sin(player_angle) * 0.48) * 52.0
+        for i in range(9):
+            var a := randf_range(0.0, TAU)
+            var speed := randf_range(65.0, 210.0)
+            sparks.append({"pos": muzzle, "vel": Vector2(cos(a), sin(a)) * speed, "life": randf_range(0.18, 0.42)})
 
 func _draw_background() -> void:
     draw_rect(Rect2(-1000, -1000, 3000, 2500), Color(0.035, 0.055, 0.06))
@@ -177,7 +203,7 @@ func _draw_particles() -> void:
 func _spawn_dust() -> void:
     if smoke.size() > 48:
         return
-    smoke.append({"pos": _iso(0,0) + Vector2(randf_range(-22,22),randf_range(7,15)), "vel": Vector2(randf_range(-5,5),randf_range(-13,-5)), "life": randf_range(0.15,0.28), "size": randf_range(2,5)})
+    smoke.append({"pos": _iso(player_pos.x,player_pos.y) + Vector2(randf_range(-22,22),randf_range(7,15)), "vel": Vector2(randf_range(-5,5),randf_range(-13,-5)), "life": randf_range(0.15,0.28), "size": randf_range(2,5)})
 
 func _update_particles(delta: float) -> void:
     for i in range(smoke.size() - 1, -1, -1):
