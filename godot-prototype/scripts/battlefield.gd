@@ -23,6 +23,7 @@ var player_health := 3
 var score := 12450
 var touch_move := Vector2.ZERO
 var touch_fire := false
+var touch_points: Dictionary = {}
 
 func _ready() -> void:
     enemies = [
@@ -33,22 +34,25 @@ func _ready() -> void:
 
 func _input(event: InputEvent) -> void:
     if event is InputEventScreenTouch:
-        _set_touch(event.position, event.pressed)
+        _set_touch(event.index, event.position, event.pressed)
     elif event is InputEventScreenDrag:
-        _set_touch(event.position, true)
+        _set_touch(event.index, event.position, true)
 
-func _set_touch(point: Vector2, pressed: bool) -> void:
-    if not pressed:
-        touch_move = Vector2.ZERO
-        touch_fire = false
-        return
-    var p := point * Vector2(1280.0 / get_viewport_rect().size.x, 720.0 / get_viewport_rect().size.y)
-    if p.x < 330.0 and p.y > 430.0:
-        touch_move = (p - Vector2(150.0, 570.0)) / 78.0
-        if touch_move.length() > 1.0:
-            touch_move = touch_move.normalized()
-    elif p.x > 930.0 and p.y > 420.0:
-        touch_fire = true
+func _set_touch(index: int, point: Vector2, pressed: bool) -> void:
+    if pressed:
+        var p := point * Vector2(1280.0 / get_viewport_rect().size.x, 720.0 / get_viewport_rect().size.y)
+        touch_points[index] = p
+    else:
+        touch_points.erase(index)
+    touch_move = Vector2.ZERO
+    touch_fire = false
+    for p in touch_points.values():
+        if p.x < 330.0 and p.y > 430.0:
+            touch_move = (p - Vector2(150.0, 570.0)) / 78.0
+            if touch_move.length() > 1.0:
+                touch_move = touch_move.normalized()
+        elif p.x > 930.0 and p.y > 420.0:
+            touch_fire = true
 
 func _process(delta: float) -> void:
     clock += delta
