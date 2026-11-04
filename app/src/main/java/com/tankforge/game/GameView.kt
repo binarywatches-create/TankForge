@@ -248,8 +248,10 @@ class GameView(context: Context) : View(context) {
         val bulletIterator = bullets.iterator()
         while (bulletIterator.hasNext()) {
             val b = bulletIterator.next()
-            b[0] += b[2] * .24f * dt
-            b[1] += b[3] * .24f * dt
+            // Enemy shells are slower, giving the player a fair chance to dodge.
+            val bulletSpeed = if (b[4] == 0f) .17f else .24f
+            b[0] += b[2] * bulletSpeed * dt
+            b[1] += b[3] * bulletSpeed * dt
             val x = b[0].toInt()
             val y = b[1].toInt()
             if (x !in 0 until cols || y !in 0 until rows) {
@@ -296,7 +298,7 @@ class GameView(context: Context) : View(context) {
                 bulletIterator.remove()
                 lives--
                 spawnExplosion(tx, ty, 0xFF69D68A.toInt(), 18)
-                playerHitUntil = now + 1400L
+                playerHitUntil = now + 1850L
                 damageFlashUntil = now + 260L
                 tx = 3f
                 ty = 11f
@@ -310,7 +312,8 @@ class GameView(context: Context) : View(context) {
             val attackDir = alignedAttackDirection(ex, ey, tx, ty)
             if (attackDir >= 0 && hasClearShot(ex, ey, tx, ty, attackDir)) {
                 enemyDirs[i] = attackDir
-                val cooldown = when (type) { 0 -> 1250L; 1 -> 900L; 2 -> 2050L; else -> 1100L }
+                // More deliberate enemy fire keeps pressure without overwhelming the player.
+                val cooldown = when (type) { 0 -> 1850L; 1 -> 1500L; 2 -> 2650L; else -> 1950L }
                 if (now - enemyLastShot.getOrElse(i) { now } >= cooldown) {
                     shoot(ex, ey, attackDir, false)
                     enemyLastShot[i] = now
@@ -407,13 +410,13 @@ class GameView(context: Context) : View(context) {
         val sy = ey.toInt().coerceIn(1, rows - 2)
         val targetX = px.toInt().coerceIn(1, cols - 2)
         val targetY = py.toInt().coerceIn(1, rows - 2)
-        val goals = if (type == 3) {
+        val goals = if (type >= 2) {
             // Tactical tanks seek a reachable firing lane several tiles away,
             // favouring side angles instead of driving straight into the player.
             buildSet {
                 for (gy in 1 until rows - 1) for (gx in 1 until cols - 1) {
                     val distance = abs(gx - targetX) + abs(gy - targetY)
-                    if (isWalkableTile(map[gy][gx]) && distance in 2..5 &&
+                    if (isWalkableTile(map[gy][gx]) && distance in 2..6 &&
                         alignedAttackDirection(gx.toFloat(), gy.toFloat(), px, py) >= 0) {
                         add(gy * cols + gx)
                     }
@@ -683,8 +686,9 @@ class GameView(context: Context) : View(context) {
 
     private fun drawControls(c: Canvas) {
         val s = cell * 1.5f
-        val cx = s * .8f
-        val cy = height - s * 1.25f
+        // Keep the whole directional pad comfortably inside the screen.
+        val cx = s * 1.45f
+        val cy = height - s * 1.65f
         val labels = listOf("▲", "▶", "▼", "◀")
         for (d in 0..3) {
             val x = cx + when (d) { 1 -> s; 3 -> -s; else -> 0f }
@@ -734,8 +738,9 @@ class GameView(context: Context) : View(context) {
             val s = cell * 1.5f
             fire = e.x > width - s * 2.2f && e.y > height - s * 2.2f
             if (!fire && e.x < width * .48f) {
-                val dx = e.x - (s * .8f)
-                val dy = e.y - (height - s * 1.25f)
+                // Match the touch origin to the repositioned on-screen controls.
+                val dx = e.x - (s * 1.45f)
+                val dy = e.y - (height - s * 1.65f)
                 move = if (abs(dx) > abs(dy)) { if (dx > 0) 1 else 3 } else { if (dy > 0) 2 else 0 }
             } else if (!fire) {
                 move = -1
