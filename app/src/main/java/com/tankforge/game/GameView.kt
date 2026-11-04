@@ -312,10 +312,10 @@ class GameView(context: Context) : View(context) {
                 bulletIterator.remove()
                 continue
             }
-            val hit = enemies.indexOfFirst { index ->
+            val hit = enemies.indices.firstOrNull { index ->
                 val radius = if (enemyTypes.getOrElse(index) { 0 } == 4) .78f else .52f
                 abs(enemies[index].first - b[0]) < radius && abs(enemies[index].second - b[1]) < radius
-            }
+            } ?: -1
             if (hit >= 0 && b[4] == 1f) {
                 enemyHp[hit] = enemyHp[hit] - if (b.getOrElse(5) { 1f } > 1.5f) 2 else 1
                 if (enemyHp[hit] <= 0) {
