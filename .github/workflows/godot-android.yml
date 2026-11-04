@@ -54,23 +54,25 @@ jobs:
           export/android/java_sdk_path = "$JAVA_HOME"
           EOF
 
+      - name: Configure Android debug signing
+        run: |
+          mkdir -p "$HOME/.android"
+          keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("godot-prototype/export_presets.cfg")
+          s = p.read_text()
+          s = s.replace('keystore/debug=""', 'keystore/debug="' + str(Path.home() / ".android/debug.keystore") + '"')
+          s = s.replace('keystore/debug_user=""', 'keystore/debug_user="androiddebugkey"')
+          s = s.replace('keystore/debug_password=""', 'keystore/debug_password="android"')
+          p.write_text(s)
+          PY
+          grep -E '^keystore/debug' godot-prototype/export_presets.cfg
+
       - name: Validate project
         run: godot --headless --path godot-prototype --editor --quit
 
-      - name: Diagnose Android export configuration
-        run: |
-          echo "Godot editor settings:"
-          cat "$HOME/.config/godot/editor_settings-4.tres"
-          echo "Android SDK:"
-          ls -la "$ANDROID_HOME"
-          echo "Godot Android export templates:"
-          ls -la "$HOME/.local/share/godot/export_templates/4.3.stable" | grep -E 'android|Android' || true
-          godot --headless --path godot-prototype --editor --quit --verbose
-
       - name: Export Android APK
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
-          ANDROID_SDK_ROOT: ${{ env.ANDROID_HOME }}
         run: |
           mkdir -p build
           godot --headless --path godot-prototype --export-debug "Android" build/TankForge-2.5D-debug.apk
