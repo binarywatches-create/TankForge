@@ -125,13 +125,13 @@ func _draw_wall(p: Vector2, color: Color, metal: bool = false) -> void:
         draw_line(p + Vector2(-16,-16), p + Vector2(12,-16), Color(0.8,0.88,0.9,0.45), 2.0)
 
 func _draw_tree(p: Vector2) -> void:
-    _draw_ellipse(p + Vector2(3, 4), Vector2(23, 10), Color(0.02,0.04,0.03,0.42))
+    __draw_ellipse(p + Vector2(3, 4), Vector2(23, 10), Color(0.02,0.04,0.03,0.42))
     draw_colored_polygon(PackedVector2Array([p + Vector2(0,-35), p + Vector2(18,-5), p + Vector2(0,2), p + Vector2(-18,-5)]), Color(0.10,0.23,0.16))
     draw_colored_polygon(PackedVector2Array([p + Vector2(0,-51), p + Vector2(13,-24), p + Vector2(0,-18), p + Vector2(-13,-24)]), Color(0.18,0.34,0.22))
     draw_line(p + Vector2(0,-35), p + Vector2(0,-8), Color(0.48,0.52,0.31,0.65), 2.0)
 
 
-func _draw_ellipse(center: Vector2, radii: Vector2, color: Color) -> void:
+func __draw_ellipse(center: Vector2, radii: Vector2, color: Color) -> void:
     var points := PackedVector2Array()
     for i in range(25):
         var a := TAU * float(i) / 24.0
@@ -143,8 +143,8 @@ func _draw_tank(pos: Vector2, angle: float, paint: Color, player: bool) -> void:
     var bob := sin(clock * 8.0 + pos.x) * 1.2
     var body_pos := ground + Vector2(0, -8 + bob)
     # Soft multi-layer contact shadow.
-    draw_ellipse(ground + Vector2(4, 8), Vector2(37, 17), Color(0.01,0.02,0.02,0.34))
-    draw_ellipse(ground + Vector2(1, 4), Vector2(28, 11), Color(0.01,0.02,0.02,0.28))
+    _draw_ellipse(ground + Vector2(4, 8), Vector2(37, 17), Color(0.01,0.02,0.02,0.34))
+    _draw_ellipse(ground + Vector2(1, 4), Vector2(28, 11), Color(0.01,0.02,0.02,0.28))
     # Tracks: dark side rails, raised links, and animated highlights.
     var track_color := Color(0.12, 0.15, 0.15)
     for side in [-1.0, 1.0]:
