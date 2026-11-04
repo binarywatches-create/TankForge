@@ -43,6 +43,10 @@ class GameView(context: Context) : View(context) {
     private var bonusMessageUntil = 0L
     private var score = 0
     private var lives = 3
+    private var level = 1
+    private var remainingSpawns = 0
+    private var bossPending = false
+    private var bossActive = false
     private var started = false
     private var over = false
     private var move = -1
@@ -59,22 +63,37 @@ class GameView(context: Context) : View(context) {
     private val green = 0xFF64C78A.toInt()
 
     private fun reset() {
+        score = 0
+        lives = 3
+        level = 1
+        started = true
+        over = false
+        startLevel(1)
+    }
+
+    // Score and lives carry over between stages; every fifth stage is a boss encounter.
+    private fun startLevel(nextLevel: Int) {
+        level = nextLevel
         for (y in 0 until rows) for (x in 0 until cols) {
             map[y][x] = when {
                 x == 0 || y == 0 || x == cols - 1 || y == rows - 1 -> 2
-                Random.nextFloat() < .105f -> 1
-                else -> when (val roll = Random.nextFloat()) {
-                    in 0f..0.025f -> 3 // water
-                    in 0.025f..0.065f -> 4 // forest
-                    in 0.065f..0.10f -> 5 // ice
+                Random.nextFloat() < (.085f + level.coerceAtMost(8) * .003f) -> 1
+                else -> when (Random.nextFloat()) {
+                    in 0f..0.025f -> 3
+                    in 0.025f..0.065f -> 4
+                    in 0.065f..0.10f -> 5
                     else -> 0
                 }
             }
         }
         for (y in 0 until rows) for (x in 0 until cols) brickHp[y][x] = if (map[y][x] == 1) 2 else 0
-        effects.clear()
-        // Keep the player's starting area clear.
         for (y in 9..12) for (x in 1..6) map[y][x] = 0
+        val spawnColumns = listOf(2, 10, 20, 30, 37)
+        for (sx in spawnColumns) for (y in 1..4) for (x in (sx - 1)..(sx + 1)) {
+            if (x in 1 until cols - 1) map[y][x] = 0
+        }
+        for (y in 1..6) for (x in 17..23) map[y][x] = 0
+        effects.clear()
         tx = 3f
         ty = 11f
         dir = 0
@@ -90,16 +109,18 @@ class GameView(context: Context) : View(context) {
         weaponUntil = 0L
         val now = System.currentTimeMillis()
         lastBonusSpawn = now
-        score = 0
-        lives = 3
+        remainingSpawns = if (level % 5 == 0) 0 else 4 + level * 2
+        bossPending = level % 5 == 0
+        bossActive = false
         over = false
-        started = true
         lastFrame = now
         lastShot = 0L
-        lastSpawn = now
+        lastSpawn = now - 900L
         lastEnemyShot = now
         playerHitUntil = 0L
         damageFlashUntil = 0L
+        bonusMessage = if (bossPending) "BOSS STAGE $level" else "LEVEL $level"
+        bonusMessageUntil = now + 2200L
     }
 
     override fun onDraw(c: Canvas) {
@@ -126,7 +147,11 @@ class GameView(context: Context) : View(context) {
         }
         if (System.currentTimeMillis() > playerHitUntil || (System.currentTimeMillis() / 100) % 2L == 0L) tank(c, tx, ty, dir, true)
         bonuses.forEach { drawBonus(c, it) }
-        enemies.forEachIndexed { i, pos -> tank(c, pos.first, pos.second, enemyDirs.getOrElse(i) { 2 }, false, enemyTypes.getOrElse(i) { 0 }) }
+        enemies.forEachIndexed { i, pos ->
+            val type = enemyTypes.getOrElse(i) { 0 }
+            tank(c, pos.first, pos.second, enemyDirs.getOrElse(i) { 2 }, false, type)
+            if (type == 4) drawBossHealth(c, pos.first, pos.second, enemyHp.getOrElse(i) { 1 }, 14 + level * 2)
+        }
         drawForestCanopies(c)
         drawEffects(c)
         bullets.forEach { b ->
@@ -204,7 +229,24 @@ class GameView(context: Context) : View(context) {
                     0 -> { shieldUntil = now + 8000L; bonusMessage = "SHIELD ACTIVATED" }
                     1 -> { lives = (lives + 1).coerceAtMost(5); bonusMessage = "REPAIR +1 LIFE" }
                     2 -> { rapidUntil = now + 9000L; bonusMessage = "RAPID FIRE" }
-                    3 -> { enemies.forEach { spawnExplosion(it.first, it.second, 0xFFFFA64D.toInt(), 22) }; enemies.clear(); enemyDirs.clear(); enemyTypes.clear(); enemyHp.clear(); enemyLastShot.clear(); score += 250; bonusMessage = "MEGA BOMB!" }
+                    3 -> {
+                        // Wipe ordinary enemies; a boss takes heavy damage but survives.
+                        for (i in enemies.indices.reversed()) {
+                            if (enemyTypes[i] == 4) {
+                                enemyHp[i] = (enemyHp[i] - 5).coerceAtLeast(1)
+                                spawnExplosion(enemies[i].first, enemies[i].second, 0xFFFFC857.toInt(), 18)
+                            } else {
+                                spawnExplosion(enemies[i].first, enemies[i].second, 0xFFFFA64D.toInt(), 22)
+                                enemies.removeAt(i)
+                                enemyDirs.removeAt(i)
+                                enemyTypes.removeAt(i)
+                                enemyHp.removeAt(i)
+                                enemyLastShot.removeAt(i)
+                            }
+                        }
+                        score += 250
+                        bonusMessage = if (bossActive) "BOSS DAMAGED!" else "MEGA BOMB!"
+                    }
                     else -> { weaponUntil = now + 12000L; bonusMessage = "HEAVY CANNON" }
                 }
                 bonusMessageUntil = now + 1800L
@@ -212,15 +254,30 @@ class GameView(context: Context) : View(context) {
             }
         }
 
-        if (enemies.size < 4 && now - lastSpawn >= 1450L) {
-            val spawnX = listOf(2f, 10f, 18f).filter { canTankMove(it, 1f) && !touchesEnemy(it, 1f) }.randomOrNull()
+        if (bossPending && enemies.isEmpty() && now - lastSpawn >= 900L) {
+            val bossX = 10f
+            enemies.add(bossX to 2f)
+            enemyDirs.add(2)
+            enemyTypes.add(4)
+            enemyHp.add(14 + level * 2)
+            enemyLastShot.add(now)
+            bossPending = false
+            bossActive = true
+            bonusMessage = "BOSS INCOMING!"
+            bonusMessageUntil = now + 2200L
+            lastSpawn = now
+        } else if (remainingSpawns > 0 && enemies.size < (2 + level / 2).coerceAtMost(5) &&
+            now - lastSpawn >= (1450L - level.coerceAtMost(8) * 65L).coerceAtLeast(850L)) {
+            val spawnX = listOf(2f, 10f, 20f, 30f, 37f).filter { canTankMove(it, 2f) && !touchesEnemy(it, 2f) }.randomOrNull()
             if (spawnX != null) {
                 val type = Random.nextInt(0, 4)
-                enemies.add(spawnX to 1f)
+                enemies.add(spawnX to 2f)
                 enemyDirs.add(2)
                 enemyTypes.add(type)
-                enemyHp.add(if (type == 1) 3 else if (type == 3) 2 else 1)
+                val baseHp = if (type == 1) 3 else if (type == 3) 2 else 1
+                enemyHp.add(baseHp + (level - 1) / 4)
                 enemyLastShot.add(now)
+                remainingSpawns--
             }
             lastSpawn = now
         }
@@ -255,7 +312,10 @@ class GameView(context: Context) : View(context) {
                 bulletIterator.remove()
                 continue
             }
-            val hit = enemies.indexOfFirst { abs(it.first - b[0]) < .52f && abs(it.second - b[1]) < .52f }
+            val hit = enemies.indices.firstOrNull { index ->
+                val radius = if (enemyTypes.getOrElse(index) { 0 } == 4) .78f else .52f
+                abs(enemies[index].first - b[0]) < radius && abs(enemies[index].second - b[1]) < radius
+            } ?: -1
             if (hit >= 0 && b[4] == 1f) {
                 enemyHp[hit] = enemyHp[hit] - if (b.getOrElse(5) { 1f } > 1.5f) 2 else 1
                 if (enemyHp[hit] <= 0) {
@@ -265,8 +325,14 @@ class GameView(context: Context) : View(context) {
                     enemyTypes.removeAt(hit)
                     enemyHp.removeAt(hit)
                     enemyLastShot.removeAt(hit)
-                    score += 100
-                    spawnExplosion(b[0], b[1], when (destroyedType) { 2 -> 0xFFFFC05A.toInt(); 3 -> 0xFFD7A6FF.toInt(); else -> 0xFFFF765C.toInt() }, if (destroyedType == 2) 24 else 16)
+                    score += if (destroyedType == 4) 1500 + level * 100 else 100 + level * 10
+                    if (destroyedType == 4) {
+                        bossActive = false
+                        lives = (lives + 1).coerceAtMost(5)
+                        bonusMessage = "BOSS DEFEATED! EXTRA LIFE"
+                        bonusMessageUntil = now + 2600L
+                    }
+                    spawnExplosion(b[0], b[1], when (destroyedType) { 2 -> 0xFFFFC05A.toInt(); 3 -> 0xFFD7A6FF.toInt(); 4 -> 0xFFFFC857.toInt(); else -> 0xFFFF765C.toInt() }, if (destroyedType == 4) 42 else if (destroyedType == 2) 24 else 16)
                     if (Random.nextFloat() < .28f && bonuses.size < 2) bonuses.add(floatArrayOf(b[0].coerceIn(2f, cols - 3f), b[1].coerceIn(2f, rows - 3f), Random.nextInt(0, 5).toFloat(), (now + 12000L).toFloat()))
                 }
                 bulletIterator.remove()
@@ -290,9 +356,13 @@ class GameView(context: Context) : View(context) {
             val attackDir = alignedAttackDirection(ex, ey, tx, ty)
             if (attackDir >= 0 && hasClearShot(ex, ey, tx, ty, attackDir)) {
                 enemyDirs[i] = attackDir
-                val cooldown = when (type) { 0 -> 1250L; 1 -> 900L; 2 -> 2050L; else -> 1100L }
+                val cooldown = when (type) { 0 -> 1250L; 1 -> 900L; 2 -> 2050L; 4 -> 760L; else -> 1100L }
                 if (now - enemyLastShot.getOrElse(i) { now } >= cooldown) {
                     shoot(ex, ey, attackDir, false)
+                    if (type == 4) {
+                        shoot(ex, ey, (attackDir + 1) % 4, false)
+                        shoot(ex, ey, (attackDir + 3) % 4, false)
+                    }
                     enemyLastShot[i] = now
                 }
                 continue
@@ -302,7 +372,7 @@ class GameView(context: Context) : View(context) {
             if (nextDir >= 0) {
                 enemyDirs[i] = nextDir
                 val terrainSpeed = if (terrainAt(ex, ey) == 5) 1.22f else 1f
-                val speed = when (type) { 0 -> .032f; 1 -> .017f; 2 -> .013f; else -> .022f } * dt * terrainSpeed
+                val speed = when (type) { 0 -> .032f; 1 -> .017f; 2 -> .013f; 4 -> .012f; else -> .022f } * dt * terrainSpeed
                 val nx = ex + when (nextDir) { 1 -> speed; 3 -> -speed; else -> 0f }
                 val ny = ey + when (nextDir) { 2 -> speed; 0 -> -speed; else -> 0f }
                 val blockedByEnemy = enemies.indices.any { j ->
@@ -312,6 +382,10 @@ class GameView(context: Context) : View(context) {
                     enemies[i] = nx to ny
                 }
             }
+        }
+
+        if (!over && enemies.isEmpty() && remainingSpawns == 0 && !bossPending) {
+            startLevel(level + 1)
         }
     }
 
@@ -675,13 +749,15 @@ class GameView(context: Context) : View(context) {
     private fun tank(c: Canvas, x: Float, y: Float, d: Int, player: Boolean, type: Int = 0) {
         val cx = ox + (x + .5f) * cell
         val cy = oy + (y + .5f) * cell
+        val tankSize = if (!player && type == 4) 1.48f else 1f
         val save = c.save()
         c.rotate(d * 90f, cx, cy)
         // Soft ground shadow separates the sprite from detailed terrain.
         p.color = 0x77071318
         c.drawOval(cx - cell * .43f, cy + cell * .25f, cx + cell * .43f, cy + cell * .48f, p)
         val sprite = tankSprite(player, type)
-        val dst = RectF(cx - cell * .5f, cy - cell * .5f, cx + cell * .5f, cy + cell * .5f)
+        val halfSize = cell * .5f * tankSize
+        val dst = RectF(cx - halfSize, cy - halfSize, cx + halfSize, cy + halfSize)
         val spritePaint = Paint().apply {
             isFilterBitmap = false
             isAntiAlias = false
@@ -693,6 +769,23 @@ class GameView(context: Context) : View(context) {
             c.drawRect(cx - cell * .20f, cy - cell * .22f, cx - cell * .08f, cy - cell * .17f, p)
         }
         c.restoreToCount(save)
+    }
+
+    private fun drawBossHealth(c: Canvas, x: Float, y: Float, hp: Int, maxHp: Int) {
+        val cx = ox + (x + .5f) * cell
+        val top = oy + (y + .5f) * cell - cell * .88f
+        val barWidth = cell * 1.45f
+        val left = cx - barWidth / 2f
+        p.color = 0xEE101820.toInt()
+        c.drawRoundRect(left, top, left + barWidth, top + cell * .13f, cell * .05f, cell * .05f, p)
+        p.color = 0xFFFF665C.toInt()
+        c.drawRoundRect(left, top, left + barWidth * (hp.toFloat() / maxHp).coerceIn(0f, 1f), top + cell * .13f, cell * .05f, cell * .05f, p)
+        p.color = 0xFFFFD36A.toInt()
+        p.textAlign = Paint.Align.CENTER
+        p.textSize = cell * .22f
+        p.typeface = android.graphics.Typeface.DEFAULT_BOLD
+        c.drawText("BOSS", cx, top - cell * .08f, p)
+        p.textAlign = Paint.Align.LEFT
     }
 
     private fun drawBonus(c: Canvas, b: FloatArray) {
@@ -728,10 +821,22 @@ class GameView(context: Context) : View(context) {
         p.textSize = cell * .42f
         p.typeface = android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.BOLD)
         p.textAlign = Paint.Align.LEFT
-        c.drawText("SCORE  $score", left + cell * .22f, bottom - cell * .22f, p)
+        c.drawText("LV $level   SCORE $score", left + cell * .22f, bottom - cell * .22f, p)
         p.textAlign = Paint.Align.CENTER
-        p.color = when { System.currentTimeMillis() < shieldUntil -> 0xFF67D8FF.toInt(); System.currentTimeMillis() < rapidUntil -> 0xFFFFD34F.toInt(); System.currentTimeMillis() < weaponUntil -> 0xFFB88BFF.toInt(); else -> 0xFFB8C8CC.toInt() }
-        c.drawText(when { System.currentTimeMillis() < shieldUntil -> "SHIELD"; System.currentTimeMillis() < rapidUntil -> "RAPID"; System.currentTimeMillis() < weaponUntil -> "HEAVY"; else -> "" }, width / 2f, bottom - cell * .22f, p)
+        p.color = when {
+            bossActive -> 0xFFFF7568.toInt()
+            System.currentTimeMillis() < shieldUntil -> 0xFF67D8FF.toInt()
+            System.currentTimeMillis() < rapidUntil -> 0xFFFFD34F.toInt()
+            System.currentTimeMillis() < weaponUntil -> 0xFFB88BFF.toInt()
+            else -> 0xFFB8C8CC.toInt()
+        }
+        c.drawText(when {
+            bossActive -> "BOSS"
+            System.currentTimeMillis() < shieldUntil -> "SHIELD"
+            System.currentTimeMillis() < rapidUntil -> "RAPID"
+            System.currentTimeMillis() < weaponUntil -> "HEAVY"
+            else -> "WAVE"
+        }, width / 2f, bottom - cell * .22f, p)
         p.textAlign = Paint.Align.RIGHT
         p.color = 0xFFFFD36A.toInt()
         c.drawText("LIVES  $lives", right - cell * .22f, bottom - cell * .22f, p)
