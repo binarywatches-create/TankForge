@@ -687,7 +687,7 @@ class GameView(context: Context) : View(context) {
     private fun drawControls(c: Canvas) {
         val s = cell * 1.5f
         // Keep the whole directional pad comfortably inside the screen.
-        val cx = s * 1.45f
+        val cx = s * 1.65f
         val cy = height - s * 1.65f
         val labels = listOf("▲", "▶", "▼", "◀")
         for (d in 0..3) {
@@ -739,7 +739,7 @@ class GameView(context: Context) : View(context) {
             fire = e.x > width - s * 2.2f && e.y > height - s * 2.2f
             if (!fire && e.x < width * .48f) {
                 // Match the touch origin to the repositioned on-screen controls.
-                val dx = e.x - (s * 1.45f)
+                val dx = e.x - (s * 1.65f)
                 val dy = e.y - (height - s * 1.65f)
                 move = if (abs(dx) > abs(dy)) { if (dx > 0) 1 else 3 } else { if (dy > 0) 2 else 0 }
             } else if (!fire) {
