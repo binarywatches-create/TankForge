@@ -2,6 +2,7 @@ package com.tankforge.game
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Bitmap
 import android.graphics.Paint
 import android.graphics.RectF
 import android.view.MotionEvent
@@ -604,85 +605,97 @@ class GameView(context: Context) : View(context) {
         p.color = 0xFFDBE8EC.toInt()
         p.strokeWidth = maxOf(1f, cell * .035f)
         c.drawLine(l + cell * .28f, t + cell * .48f, l + cell * .72f, t + cell * .48f, p)
-    }    private fun tank(c: Canvas, x: Float, y: Float, d: Int, player: Boolean, type: Int = 0) {
+    }    // Pixel-art tank sprites are cached as tiny 24x24 bitmaps and scaled without filtering.
+    // This keeps edges crisp while giving every tank class its own readable silhouette.
+    private val tankSprites = HashMap<Int, android.graphics.Bitmap>()
+
+    private fun tankSprite(player: Boolean, type: Int): android.graphics.Bitmap {
+        val key = (if (player) 100 else 0) + type
+        return tankSprites.getOrPut(key) {
+            val bmp = android.graphics.Bitmap.createBitmap(24, 24, android.graphics.Bitmap.Config.ARGB_8888)
+            val sc = Canvas(bmp)
+            val q = Paint().apply { isAntiAlias = false; style = Paint.Style.FILL }
+            val body = if (player) 0xFF48B875.toInt() else when (type) {
+                1 -> 0xFF6889B5.toInt()
+                2 -> 0xFFD79A3D.toInt()
+                3 -> 0xFF9A68C2.toInt()
+                else -> 0xFFD45449.toInt()
+            }
+            val light = if (player) 0xFFB8F2B8.toInt() else when (type) {
+                1 -> 0xFFC8E0FF.toInt()
+                2 -> 0xFFFFD98B.toInt()
+                3 -> 0xFFE9C7FF.toInt()
+                else -> 0xFFFFB2A1.toInt()
+            }
+            val dark = 0xFF17262B.toInt()
+            fun px(color: Int, x1: Int, y1: Int, x2: Int, y2: Int) {
+                q.color = color
+                sc.drawRect(x1.toFloat(), y1.toFloat(), x2.toFloat(), y2.toFloat(), q)
+            }
+            // Track bands and individual tread blocks.
+            px(dark, 2, 3, 6, 21); px(dark, 18, 3, 22, 21)
+            for (yy in 4..20 step 3) {
+                px(0xFF879397.toInt(), 2, yy, 6, yy + 1)
+                px(0xFF879397.toInt(), 18, yy, 22, yy + 1)
+            }
+            // Class-specific hull proportions: heavy is broad, scout is compact.
+            val inset = if (!player && type == 2) 5 else if (!player && type == 0) 7 else 6
+            px(0xFF0D171B.toInt(), inset - 1, 4, 24 - inset + 1, 20)
+            px(if (player) 0xFF286C4C.toInt() else 0xFF663B39.toInt(), inset, 4, 24 - inset, 20)
+            px(body, inset + 1, 5, 23 - inset, 19)
+            px(light, inset + 2, 5, 15, 7)
+            px(if (player) 0xFF2F8054.toInt() else 0xFF8B5145.toInt(), 8, 16, 16, 18)
+            // Rear engine grille and side armour.
+            px(0xFF25383A.toInt(), 9, 15, 15, 17)
+            px(0xFFB8C5B4.toInt(), 10, 15, 11, 16)
+            px(0xFFB8C5B4.toInt(), 13, 15, 14, 16)
+            // Turret ring, turret block, hatch and barrel.
+            px(0xFF101D22.toInt(), 8, 8, 16, 16)
+            px(if (player) 0xFF75D98E.toInt() else when (type) {
+                1 -> 0xFFA9C9ED.toInt(); 2 -> 0xFFEBC06B.toInt()
+                3 -> 0xFFD0A5F0.toInt(); else -> 0xFFEC806C.toInt()
+            }, 9, 9, 15, 15)
+            px(0xFF263B3D.toInt(), 10, 10, 14, 14)
+            px(light, 10, 9, 12, 10)
+            px(0xFF18262A.toInt(), 11, 1, 13, 10)
+            px(if (player) 0xFFDCE9D0.toInt() else 0xFFE5D8CF.toInt(), 11, 2, 12, 8)
+            px(0xFF27383B.toInt(), 10, 1, 14, 3)
+            px(0xFFFFD27B.toInt(), 11, 1, 13, 2)
+            // Distinct class insignia.
+            if (!player) when (type) {
+                1 -> { px(0xFFDCEBFF.toInt(), 8, 6, 10, 7); px(0xFFDCEBFF.toInt(), 14, 6, 16, 7) }
+                2 -> { px(0xFFFFE6A5.toInt(), 10, 18, 14, 19) }
+                3 -> { px(0xFFE9CEFF.toInt(), 7, 10, 8, 14); px(0xFFE9CEFF.toInt(), 16, 10, 17, 14) }
+                else -> px(0xFFFFD5C8.toInt(), 10, 18, 14, 19)
+            }
+            bmp
+        }
+    }
+
+    private fun tank(c: Canvas, x: Float, y: Float, d: Int, player: Boolean, type: Int = 0) {
         val cx = ox + (x + .5f) * cell
         val cy = oy + (y + .5f) * cell
-        val hull = if (player) 0xFF4FAD72.toInt() else when (type) { 1 -> 0xFF657B9D.toInt(); 2 -> 0xFFD49A42.toInt(); 3 -> 0xFF9A68B8.toInt(); else -> 0xFFCF514A.toInt() }
-        val highlight = if (player) 0xFFB5F1B9.toInt() else when (type) { 1 -> 0xFFB8D4F5.toInt(); 2 -> 0xFFFFD88A.toInt(); 3 -> 0xFFE0B8FF.toInt(); else -> 0xFFFFB0A0.toInt() }
         val save = c.save()
         c.rotate(d * 90f, cx, cy)
-
-        // Ground shadow, twin tracks and animated individual tread plates.
-        p.color = 0x88071318.toInt()
-        c.drawOval(cx - cell * .46f, cy + cell * .25f, cx + cell * .46f, cy + cell * .49f, p)
-        p.color = 0xFF10191D.toInt()
-        c.drawRoundRect(cx - cell * .46f, cy - cell * .4f, cx - cell * .22f, cy + cell * .4f, cell * .06f, cell * .06f, p)
-        c.drawRoundRect(cx + cell * .22f, cy - cell * .4f, cx + cell * .46f, cy + cell * .4f, cell * .06f, cell * .06f, p)
-        p.color = 0xFF78868A.toInt()
-        val treadShift = (System.currentTimeMillis() / 95L % 2L).toInt()
-        for (i in -3..3) {
-            val yy = cy + (i + treadShift * .5f) * cell * .105f
-            c.drawRect(cx - cell * .445f, yy - cell * .022f, cx - cell * .235f, yy + cell * .022f, p)
-            c.drawRect(cx + cell * .235f, yy - cell * .022f, cx + cell * .445f, yy + cell * .022f, p)
+        // Soft ground shadow separates the sprite from detailed terrain.
+        p.color = 0x77071318
+        c.drawOval(cx - cell * .43f, cy + cell * .25f, cx + cell * .43f, cy + cell * .48f, p)
+        val sprite = tankSprite(player, type)
+        val dst = RectF(cx - cell * .5f, cy - cell * .5f, cx + cell * .5f, cy + cell * .5f)
+        val spritePaint = Paint().apply {
+            isFilterBitmap = false
+            isAntiAlias = false
         }
-        p.color = 0xFF303D40.toInt()
-        for (i in -2..2) {
-            val yy = cy + i * cell * .145f
-            c.drawCircle(cx - cell * .335f, yy, cell * .045f, p)
-            c.drawCircle(cx + cell * .335f, yy, cell * .045f, p)
-        }
-
-        // Armoured hull with bevels, top plate and maintenance panels.
-        p.color = 0xFF18272A.toInt()
-        c.drawRoundRect(cx - cell * .32f, cy - cell * .35f, cx + cell * .32f, cy + cell * .35f, cell * .09f, cell * .09f, p)
-        p.color = if (player) 0xFF286C4C.toInt() else 0xFF783B38.toInt()
-        c.drawRoundRect(cx - cell * .29f, cy - cell * .32f, cx + cell * .29f, cy + cell * .31f, cell * .07f, cell * .07f, p)
-        p.color = hull
-        c.drawRoundRect(cx - cell * .265f, cy - cell * .29f, cx + cell * .265f, cy + cell * .27f, cell * .055f, cell * .055f, p)
-        p.color = highlight
-        c.drawRoundRect(cx - cell * .21f, cy - cell * .26f, cx + cell * .15f, cy - cell * .205f, cell * .02f, cell * .02f, p)
-        p.color = if (player) 0xFF347F56.toInt() else 0xFF9A4B43.toInt()
-        c.drawRect(cx - cell * .2f, cy + cell * .13f, cx + cell * .2f, cy + cell * .21f, p)
-        p.color = 0xFF263A38.toInt()
-        c.drawRoundRect(cx - cell * .17f, cy - cell * .04f, cx + cell * .17f, cy + cell * .105f, cell * .025f, cell * .025f, p)
-        p.color = 0xFF9BAE9A.toInt()
-        for (i in -1..1) c.drawRect(cx + i * cell * .075f - cell * .012f, cy - cell * .015f, cx + i * cell * .075f + cell * .012f, cy + cell * .065f, p)
-        p.color = 0xFF17262A.toInt()
-        c.drawCircle(cx, cy, cell * .215f, p)
-        p.color = if (player) 0xFF75D58D.toInt() else when (type) { 1 -> 0xFF9DB7D7.toInt(); 2 -> 0xFFE6B85E.toInt(); 3 -> 0xFFC59AE8.toInt(); else -> 0xFFE97965.toInt() }
-        c.drawCircle(cx, cy, cell * .178f, p)
-        p.color = 0xFF263A3C.toInt()
-        c.drawCircle(cx, cy, cell * .125f, p)
-        p.color = highlight
-        c.drawCircle(cx - cell * .055f, cy - cell * .06f, cell * .035f, p)
-
-        // Long cannon with a dark bore and a visible muzzle.
-        p.color = 0xFF172326.toInt()
-        c.drawRoundRect(cx - cell * .065f, cy - cell * .46f, cx + cell * .065f, cy - cell * .12f, cell * .025f, cell * .025f, p)
-        p.color = if (player) 0xFFD1E2C6.toInt() else 0xFFE0D1C7.toInt()
-        c.drawRect(cx - cell * .035f, cy - cell * .43f, cx + cell * .035f, cy - cell * .15f, p)
-        p.color = 0xFF27383B.toInt()
-        c.drawRect(cx - cell * .085f, cy - cell * .47f, cx + cell * .085f, cy - cell * .405f, p)
-        p.color = 0xFFFFD27B.toInt()
-        c.drawRect(cx - cell * .025f, cy - cell * .455f, cx + cell * .025f, cy - cell * .425f, p)
-
-        // Commander hatch, hinges and small identification mark.
-        p.color = 0xFF1A292B.toInt()
-        c.drawCircle(cx, cy - cell * .18f, cell * .082f, p)
-        p.color = highlight
-        c.drawArc(cx - cell * .07f, cy - cell * .25f, cx + cell * .07f, cy - cell * .11f, 190f, 160f, false, p)
-        p.color = if (player) 0xFFFFD66F.toInt() else 0xFFFFD6C9.toInt()
-        c.drawCircle(cx, cy + cell * .245f, cell * .04f, p)
-        p.color = 0xFF172326.toInt()
-        c.drawCircle(cx - cell * .23f, cy - cell * .22f, cell * .025f, p)
-        c.drawCircle(cx + cell * .23f, cy - cell * .22f, cell * .025f, p)
-        if (!player && type == 3) {
-            p.color = 0xFFE5C4FF.toInt()
-            c.drawCircle(cx - cell * .34f, cy, cell * .055f, p)
-            c.drawCircle(cx + cell * .34f, cy, cell * .055f, p)
+        c.drawBitmap(sprite, null, dst, spritePaint)
+        // Small specular glint changes subtly with the frame for a living arcade look.
+        if (player && System.currentTimeMillis() % 700L < 350L) {
+            p.color = 0x66FFFFFF
+            c.drawRect(cx - cell * .20f, cy - cell * .22f, cx - cell * .08f, cy - cell * .17f, p)
         }
         c.restoreToCount(save)
-    }    private fun drawBonus(c: Canvas, b: FloatArray) {
+    }
+
+    private fun drawBonus(c: Canvas, b: FloatArray) {
         val x = ox + (b[0] + .5f) * cell
         val y = oy + (b[1] + .5f) * cell
         val colors = intArrayOf(0xFF4CB9F0.toInt(), 0xFF67D58A.toInt(), 0xFFFFD34F.toInt(), 0xFFE86D55.toInt(), 0xFFB88BFF.toInt())
