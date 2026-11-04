@@ -7,6 +7,9 @@ This is a separate Godot 4 prototype branch. It does not replace the working Kot
 - Layered tank silhouettes with hull, turret, barrel, tracks, contact shadows and team colors
 - Animated muzzle flash, recoil, dust, shells, impact bursts, sparks and smoke
 - Basic combat loop: enemy pursuit and firing, player damage, enemy damage and score
+- Grid-based A* enemy navigation that routes around walls and trees
+- Destructible brick and steel cover with different durability, damage marks and impact effects
+- Player collision against solid cover with wall sliding
 - Keyboard controls for desktop testing
 - Multi-touch joystick and fire zones for Android landscape play
 - Compatibility renderer and 1280x720 landscape viewport
