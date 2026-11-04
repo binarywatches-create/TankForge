@@ -17,9 +17,38 @@ var player_angle := 0.0
 var fire_cooldown := 0.0
 var smoke: Array[Dictionary] = []
 var sparks: Array[Dictionary] = []
+var shells: Array[Dictionary] = []
+var enemies: Array[Dictionary] = []
+var player_health := 3
+var score := 12450
+var touch_move := Vector2.ZERO
+var touch_fire := false
 
 func _ready() -> void:
+    enemies = [
+        {"pos": Vector2(4.0, -2.0), "angle": PI, "hp": 2, "cooldown": 1.0, "paint": Color(0.66, 0.30, 0.22)},
+        {"pos": Vector2(-5.0, 2.0), "angle": -0.35, "hp": 2, "cooldown": 2.0, "paint": Color(0.72, 0.57, 0.25)}
+    ]
     queue_redraw()
+
+func _input(event: InputEvent) -> void:
+    if event is InputEventScreenTouch:
+        _set_touch(event.position, event.pressed)
+    elif event is InputEventScreenDrag:
+        _set_touch(event.position, true)
+
+func _set_touch(point: Vector2, pressed: bool) -> void:
+    if not pressed:
+        touch_move = Vector2.ZERO
+        touch_fire = false
+        return
+    var p := point * Vector2(1280.0 / get_viewport_rect().size.x, 720.0 / get_viewport_rect().size.y)
+    if p.x < 330.0 and p.y > 430.0:
+        touch_move = (p - Vector2(150.0, 570.0)) / 78.0
+        if touch_move.length() > 1.0:
+            touch_move = touch_move.normalized()
+    elif p.x > 930.0 and p.y > 420.0:
+        touch_fire = true
 
 func _process(delta: float) -> void:
     clock += delta
@@ -30,14 +59,16 @@ func _process(delta: float) -> void:
     if fmod(clock, 0.18) < delta:
         _spawn_dust()
     _update_particles(delta)
+    _update_combat(delta)
     queue_redraw()
 
 func _draw() -> void:
     _draw_background()
     _draw_world()
     _draw_tank(player_pos, player_angle, Color(0.24, 0.57, 0.39), true)
-    _draw_tank(Vector2(4.0, -2.0), PI, Color(0.66, 0.30, 0.22), false)
-    _draw_tank(Vector2(-5.0, 2.0), -0.35, Color(0.72, 0.57, 0.25), false)
+    for enemy in enemies:
+        _draw_tank(enemy.pos, enemy.angle, enemy.paint, false)
+    _draw_shells()
     _draw_particles()
     _draw_vignette()
     _draw_hud()
@@ -50,6 +81,7 @@ func _update_player(delta: float) -> void:
         float(Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT)) - float(Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT)),
         float(Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN)) - float(Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP))
     )
+    movement += touch_move
     if movement.length() > 0.01:
         movement = movement.normalized()
         player_pos += movement * delta * 2.7
@@ -57,10 +89,12 @@ func _update_player(delta: float) -> void:
         player_pos.y = clampf(player_pos.y, -6.0, 6.0)
         player_angle = movement.angle()
     fire_cooldown = maxf(0.0, fire_cooldown - delta)
-    if Input.is_key_pressed(KEY_SPACE) and fire_cooldown <= 0.0:
+    if (Input.is_key_pressed(KEY_SPACE) or touch_fire) and fire_cooldown <= 0.0:
         muzzle_flash = 1.0
         recoil = 1.0
         fire_cooldown = 0.22
+        var direction := Vector2(cos(player_angle), sin(player_angle))
+        shells.append({"pos": player_pos + direction, "vel": direction * 10.0, "team": 0, "life": 1.5})
         var muzzle := _iso(player_pos.x, player_pos.y) + Vector2(cos(player_angle), sin(player_angle) * 0.48) * 52.0
         for i in range(9):
             var a := randf_range(0.0, TAU)
@@ -109,6 +143,11 @@ func _draw_world() -> void:
         var p := _iso(-10.0 + float(i), 6.0)
         draw_colored_polygon(PackedVector2Array([p + Vector2(0,-12), p + Vector2(32,0), p + Vector2(0,12), p + Vector2(-32,0)]), Color(0.10, 0.27, 0.34, 0.92))
         draw_line(p + Vector2(-12, -2), p + Vector2(7, -5), Color(0.45, 0.72, 0.75, 0.55), 2.0)
+    # Craters and broken track marks add battlefield texture.
+    for crater in [Vector2(-3.0, -5.0), Vector2(2.0, 5.0), Vector2(5.0, -1.0), Vector2(-6.0, 1.0)]:
+        var cp := _iso(crater.x, crater.y)
+        _draw_ellipse(cp, Vector2(20, 9), Color(0.06, 0.10, 0.09, 0.42))
+        draw_arc(cp + Vector2(-1, -1), 17.0, PI * 0.08, PI * 0.92, 20, Color(0.48, 0.51, 0.39, 0.22), 2.0)
 
 func _draw_wall(p: Vector2, color: Color, metal: bool = false) -> void:
     var w := 27.0
@@ -193,12 +232,69 @@ func _draw_tank(pos: Vector2, angle: float, paint: Color, player: bool) -> void:
         draw_circle(flash, 11.0 * muzzle_flash, Color(1.0,0.70,0.25, muzzle_flash))
         draw_colored_polygon(PackedVector2Array([flash + Vector2(15,0), flash + Vector2(0,-5), flash + Vector2(-7,0), flash + Vector2(0,5)]), Color(1.0,0.9,0.55,muzzle_flash))
 
+func _update_combat(delta: float) -> void:
+    for i in range(enemies.size() - 1, -1, -1):
+        var enemy: Dictionary = enemies[i]
+        var to_player: Vector2 = player_pos - enemy.pos
+        var distance := to_player.length()
+        if distance > 3.0:
+            var direction := to_player.normalized()
+            enemy.pos += direction * delta * 0.48
+            enemy.angle = direction.angle()
+        enemy.cooldown = maxf(0.0, enemy.cooldown - delta)
+        if distance < 10.0 and enemy.cooldown <= 0.0:
+            var aim := to_player.normalized()
+            shells.append({"pos": enemy.pos + aim, "vel": aim * 7.0, "team": 1, "life": 1.8})
+            enemy.cooldown = randf_range(1.3, 2.1)
+        enemies[i] = enemy
+
+    for i in range(shells.size() - 1, -1, -1):
+        var shell: Dictionary = shells[i]
+        shell.pos += shell.vel * delta
+        shell.life -= delta
+        var hit := false
+        if int(shell.team) == 0:
+            for j in range(enemies.size() - 1, -1, -1):
+                var enemy: Dictionary = enemies[j]
+                if shell.pos.distance_to(enemy.pos) < 0.85:
+                    enemy.hp -= 1
+                    _burst(_iso(shell.pos.x, shell.pos.y), Color(1.0, 0.55, 0.22))
+                    hit = true
+                    if enemy.hp <= 0:
+                        score += 500
+                        enemies.remove_at(j)
+                        var replacement_pos := Vector2(randf_range(-8.0, 8.0), randf_range(-5.0, 5.0))
+                        enemies.append({"pos": replacement_pos, "angle": PI, "hp": 2, "cooldown": 1.4, "paint": Color(0.66, 0.30, 0.22)})
+                    else:
+                        enemies[j] = enemy
+                    break
+        elif shell.pos.distance_to(player_pos) < 0.8:
+            player_health = maxi(0, player_health - 1)
+            _burst(_iso(player_pos.x, player_pos.y), Color(1.0, 0.25, 0.16))
+            hit = true
+        if hit or shell.life <= 0.0 or absf(shell.pos.x) > 13.0 or absf(shell.pos.y) > 10.0:
+            shells.remove_at(i)
+        else:
+            shells[i] = shell
+
+func _burst(point: Vector2, tint: Color) -> void:
+    for n in range(12):
+        var a := randf_range(0.0, TAU)
+        var speed := randf_range(25.0, 115.0)
+        sparks.append({"pos": point, "vel": Vector2(cos(a), sin(a)) * speed, "life": randf_range(0.2, 0.55), "tint": tint})
+
+func _draw_shells() -> void:
+    for shell in shells:
+        var p := _iso(shell.pos.x, shell.pos.y) + Vector2(0, -10)
+        draw_circle(p, 4.0, Color(1.0, 0.72, 0.31))
+        draw_circle(p, 2.0, Color(1.0, 0.95, 0.68))
+
 func _draw_particles() -> void:
     for particle in smoke:
         var life: float = particle.life
         draw_circle(particle.pos, particle.size, Color(0.55,0.61,0.57, clampf(life,0,0.28)))
     for particle in sparks:
-        draw_line(particle.pos, particle.pos - particle.vel * 0.035, Color(1.0,0.66,0.27, particle.life), 2.0)
+        draw_line(particle.pos, particle.pos - particle.vel * 0.035, particle.get("tint", Color(1.0,0.66,0.27)).lerp(Color.WHITE, 0.25), 2.0)
 
 func _spawn_dust() -> void:
     if smoke.size() > 48:
@@ -226,8 +322,14 @@ func _draw_vignette() -> void:
 func _draw_hud() -> void:
     draw_string(ThemeDB.fallback_font, Vector2(34,48), "TANKFORGE  /  FRONTLINE", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.82,0.88,0.79))
     draw_string(ThemeDB.fallback_font, Vector2(34,76), "SECTOR 04     •     OPERATION IRON VEIL", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.55,0.68,0.59))
-    draw_string(ThemeDB.fallback_font, Vector2(1040,48), "SCORE  012450", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.96,0.78,0.43))
-    draw_string(ThemeDB.fallback_font, Vector2(1040,74), "ARMOUR  ♥ ♥ ♥", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.78,0.86,0.78))
+    draw_string(ThemeDB.fallback_font, Vector2(1040,48), "SCORE  %06d" % score, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.96,0.78,0.43))
+    draw_string(ThemeDB.fallback_font, Vector2(1040,74), "ARMOUR  " + "♥ ".repeat(player_health), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.78,0.86,0.78))
     draw_line(Vector2(32,92), Vector2(1248,92), Color(0.75,0.82,0.72,0.25), 1.0)
     draw_string(ThemeDB.fallback_font, Vector2(34,680), "WASD / ARROWS  MOVE     SPACE  FIRE", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.63,0.73,0.65))
-    draw_string(ThemeDB.fallback_font, Vector2(1040,680), "VISUAL PROTOTYPE  /  2.5D", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.63,0.73,0.65))
+    draw_string(ThemeDB.fallback_font, Vector2(1040,680), "2.5D  /  TOUCH READY", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.63,0.73,0.65))
+    draw_circle(Vector2(150,570), 66.0, Color(0.12,0.18,0.16,0.48))
+    draw_arc(Vector2(150,570), 66.0, 0.0, TAU, 48, Color(0.64,0.76,0.66,0.55), 2.0)
+    draw_circle(Vector2(150,570) + touch_move * 36.0, 23.0, Color(0.42,0.62,0.49,0.72))
+    draw_circle(Vector2(1120,570), 58.0, Color(0.38,0.12,0.09,0.55))
+    draw_arc(Vector2(1120,570), 58.0, 0.0, TAU, 48, Color(0.96,0.58,0.37,0.65), 2.0)
+    draw_string(ThemeDB.fallback_font, Vector2(1084,576), "FIRE", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1.0,0.86,0.72))
